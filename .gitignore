@@ -1,0 +1,6 @@
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+!benchmarks/results/published/
+!benchmarks/results/published/*.json
+__pycache__/
+*.pyc

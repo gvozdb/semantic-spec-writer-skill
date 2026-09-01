@@ -1,0 +1,31 @@
+spec
+meta:
+  file: retry-schedule.spec.ctx
+  title: Deterministic capped retry scheduling
+  status: benchmark
+
+terms:
+  i: zero-based retry index
+  floor: retry_after when non-null, otherwise 0
+
+goal:
+  G1: return capped exponential retry delays without mutating inputs
+
+rules:
+  R1: attempts,base_delay,max_delay must be int and not bool and >=0; retry_after must be null or int and not bool and >=0
+  R2: wrong integer type -> TypeError "<name> must be an integer"; negative value -> ValueError "<name> must be non-negative"
+  R3: attempts=0 -> []
+  R4: for i in [0,attempts): delay_i=min(max_delay,max(base_delay*2**i,floor))
+  R5: return [delay_i in ascending i]; exclude initial attempt and metadata; preserve all inputs
+
+acceptance:
+  A1:
+    given: valid non-negative integer arguments
+    when: build_retry_schedule is called
+    then: output follows R3-R5 exactly
+  A2:
+    given: invalid type or negative argument
+    when: build_retry_schedule is called
+    then: raise the error in R2 before scheduling
+
+open_questions: []

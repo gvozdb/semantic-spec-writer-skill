@@ -1,0 +1,2894 @@
+{
+  "cases": [
+    "cursor-pagination",
+    "email-routing",
+    "feature-flags",
+    "inventory-reservation",
+    "invoice-totals",
+    "order-transitions",
+    "retry-schedule",
+    "webhook-validation"
+  ],
+  "created_at": "2026-09-01T12:26:11.396881+00:00",
+  "environment": {
+    "codex": "codex-cli 0.149.1",
+    "git_commit": "e85d1e2a0abbfe6c54e99ddf13549cbbb0c10f5c",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": "gpt-5.6-terra",
+  "oracle_exposure": "possible: grader files are outside the workspace but not container-isolated",
+  "pricing_usd_per_million": {},
+  "provider": "codex",
+  "reasoning_effort": "medium",
+  "repetitions": 3,
+  "results": [
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r3",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "e68f97c0d232179c3b973e5a2ca70fe96afa58d2707db6bd00ecbb603d4cef40",
+        "spec_sha256": "f530e5d90a2a8925aa07dabc1546c4aa8ff3843cec3349914c995261c4b69078",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 65.331,
+        "event_errors": [],
+        "final_message": "Implemented targeted feature-flag evaluation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/001-feature-flags-semantic-r3/feature-flags/solution.py:1).\n\nIt now supports exact enablement, dependency/cycle handling with memoization, targeting gates, deterministic SHA-256 rollout buckets, input preservation, and ordered results.\n\nVerified with `python3` AST syntax parsing plus behavioral assertions; all checks passed.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cef-25a1-7c31-af58-fd87450342c1",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 83456,
+          "input_tokens": 93799,
+          "output_tokens": 2656,
+          "reasoning_output_tokens": 560,
+          "uncached_input_tokens": 10343
+        }
+      },
+      "repetition": 3,
+      "run_order": 1,
+      "spec": {
+        "bytes": 1231,
+        "characters": 1231,
+        "lines": 33,
+        "words": 161
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r3",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "1006c10adb6998b61946a8703c547a18005884c62fcb1d278204081b8e748030",
+        "spec_sha256": "24e66cceb9632b0ce7bad509d9b97718c0b4ae1b118be0735c24fbbf44693adb",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 80.567,
+        "event_errors": [],
+        "final_message": "Implemented `evaluate_flags` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/002-feature-flags-baseline-r3/feature-flags/solution.py).\n\nIt now handles exact enabled checks, targeting gates, deterministic SHA-256 rollout bucketing, dependency chains, missing dependencies, and cycles. Input order and inputs are preserved.\n\nVerified with `python3 -m py_compile`, targeted behavioral assertions, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf0-2578-7100-8370-8191ee711227",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 73216,
+          "input_tokens": 94570,
+          "output_tokens": 2900,
+          "reasoning_output_tokens": 688,
+          "uncached_input_tokens": 21354
+        }
+      },
+      "repetition": 3,
+      "run_order": 2,
+      "spec": {
+        "bytes": 2129,
+        "characters": 2123,
+        "lines": 15,
+        "words": 349
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r2",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "1006c10adb6998b61946a8703c547a18005884c62fcb1d278204081b8e748030",
+        "spec_sha256": "24e66cceb9632b0ce7bad509d9b97718c0b4ae1b118be0735c24fbbf44693adb",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 60.008,
+        "event_errors": [],
+        "final_message": "Implemented `evaluate_flags` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/003-feature-flags-baseline-r2/feature-flags/solution.py).\n\nIt now handles exact enabled values, targeting gates, SHA-256 rollout bucketing, dependency chains, missing dependencies, and cycles without mutating inputs.\n\nVerified with `python3 -m py_compile` and focused behavioral assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf1-6012-70f2-a25b-f3a5ee92a169",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 77312,
+          "input_tokens": 94725,
+          "output_tokens": 2582,
+          "reasoning_output_tokens": 425,
+          "uncached_input_tokens": 17413
+        }
+      },
+      "repetition": 2,
+      "run_order": 3,
+      "spec": {
+        "bytes": 2129,
+        "characters": 2123,
+        "lines": 15,
+        "words": 349
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r2",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "e68f97c0d232179c3b973e5a2ca70fe96afa58d2707db6bd00ecbb603d4cef40",
+        "spec_sha256": "f530e5d90a2a8925aa07dabc1546c4aa8ff3843cec3349914c995261c4b69078",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 57.537,
+        "event_errors": [],
+        "final_message": "Implemented targeted feature-flag evaluation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/004-feature-flags-semantic-r2/feature-flags/solution.py).\n\nIt now supports strict enablement, targeting gates, deterministic SHA-256 rollout bucketing, memoized dependencies, and cycle/missing-dependency handling without mutating inputs.\n\nVerified with `python3 -m py_compile solution.py` and behavioral assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf2-4a9a-72f3-8cfd-68a7f6460e7c",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 77312,
+          "input_tokens": 93457,
+          "output_tokens": 2590,
+          "reasoning_output_tokens": 701,
+          "uncached_input_tokens": 16145
+        }
+      },
+      "repetition": 2,
+      "run_order": 4,
+      "spec": {
+        "bytes": 1231,
+        "characters": 1231,
+        "lines": 33,
+        "words": 161
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r3",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "57a8f892c3c947f2d610993f1af4c16f5ed36911b27d12028f95da04c0024438",
+        "spec_sha256": "50ffae4243c2fe1112c788e27486152f5dd0725107f1e352557cc231aeee2484",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 101.672,
+        "event_errors": [],
+        "final_message": "Implemented canonical opaque cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/005-cursor-pagination-semantic-r3/cursor-pagination/solution.py).\n\nIt now validates limits/cursors, handles end offsets, emits exact URL-safe Base64 JSON cursors, and preserves inputs. Verified with behavioral assertions and `python3 -m py_compile`.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:31:11.106496Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/005-cursor-pagination-semantic-r3/cursor-pagination/solution.py\n2026-09-01T12:32:02.819038Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf -- __pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf -- __pycache__'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf -- __pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf -- __pycache__'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05cf3-2b9d-7d80-849c-f84ef1de5573",
+        "tool_call_total": 8,
+        "tool_calls": {
+          "command_execution": 7,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 168192,
+          "input_tokens": 191153,
+          "output_tokens": 4343,
+          "reasoning_output_tokens": 1110,
+          "uncached_input_tokens": 22961
+        }
+      },
+      "repetition": 3,
+      "run_order": 5,
+      "spec": {
+        "bytes": 1320,
+        "characters": 1320,
+        "lines": 33,
+        "words": 173
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r3",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "4815ad4a283ddf3c6ff67bdbf8dfae72b611eafaebdd8161a467489210cefaf9",
+        "spec_sha256": "5416224296ef6ad8c1d65df6797b16c06f062dd25a71dfde55add6833d510fe3",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 86.33,
+        "event_errors": [],
+        "final_message": "Implemented cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/006-cursor-pagination-baseline-r3/cursor-pagination/solution.py).\n\nIt now validates limits and cursors, uses canonical URL-safe Base64 JSON offsets, handles final/empty pages, preserves inputs, and reports the specified errors. Syntax and behavior checks passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:32:53.971858Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/006-cursor-pagination-baseline-r3/cursor-pagination/solution.py\n",
+        "thread_id": "01a05cf4-b90e-7361-8d79-624970634e2c",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 95488,
+          "input_tokens": 115018,
+          "output_tokens": 3963,
+          "reasoning_output_tokens": 1010,
+          "uncached_input_tokens": 19530
+        }
+      },
+      "repetition": 3,
+      "run_order": 6,
+      "spec": {
+        "bytes": 1923,
+        "characters": 1923,
+        "lines": 13,
+        "words": 309
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r2",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "7a5cd04f189c12c4cc95c0f60402dafcb4a16d7badf59fa9e60f8edef2a6ee1d",
+        "spec_sha256": "98cf8179dc52e938207521446733a6262272b610b1d9918f1ecc909bc8d40189",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 101.355,
+        "event_errors": [],
+        "final_message": "Implemented webhook signature validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/007-webhook-validation-baseline-r2/webhook-validation/solution.py).\n\nIt now performs strict header validation, canonical JSON HMAC-SHA256 verification, timestamp tolerance checks, rotated `v1` signatures, and constant-time comparisons.\n\nVerified with `python3 -m py_compile` plus behavior checks for success, expiry, mismatch, malformed headers, uppercase hashes, and non-ASCII digits.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf6-0a7e-7c60-bb49-5be6331bf3f1",
+        "tool_call_total": 9,
+        "tool_calls": {
+          "command_execution": 6,
+          "file_change": 3
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 147968,
+          "input_tokens": 171586,
+          "output_tokens": 4411,
+          "reasoning_output_tokens": 1325,
+          "uncached_input_tokens": 23618
+        }
+      },
+      "repetition": 2,
+      "run_order": 7,
+      "spec": {
+        "bytes": 2065,
+        "characters": 2065,
+        "lines": 13,
+        "words": 298
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r2",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "8af18d39e06693102584a0a6a23a051133445dc8c894cf4aa6f87dc07db200c4",
+        "spec_sha256": "1ee1b4cd3ea5cb54320a295f70747e945a784aa3b685583c3f5ab95d2e77201b",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 101.983,
+        "event_errors": [],
+        "final_message": "Implemented timestamped HMAC webhook validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/008-webhook-validation-semantic-r2/webhook-validation/solution.py).\n\nIt now validates header structure/types, expiration, canonical JSON HMAC-SHA256 signatures, and compares every `v1` using constant-time comparison. Syntax compilation and behavioral checks passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf7-96e8-7370-a748-86c3829a4122",
+        "tool_call_total": 8,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 3
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 136960,
+          "input_tokens": 149810,
+          "output_tokens": 4143,
+          "reasoning_output_tokens": 1170,
+          "uncached_input_tokens": 12850
+        }
+      },
+      "repetition": 2,
+      "run_order": 8,
+      "spec": {
+        "bytes": 1355,
+        "characters": 1355,
+        "lines": 34,
+        "words": 151
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r1",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "62f8c08de40c9e7bfac6ce779b5751b5b9a5739281be8c8da5daa61e2de354d0",
+        "spec_sha256": "39b7604ae77a4a35a7e23b5175be0fb540cdcc7e52c4afef412529c7e45f75b9",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 44.906,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/009-order-transitions-semantic-r1/order-transitions/solution.py:1).\n\nIt now handles all specified transitions, exact error shapes, identifier trimming/validation, deep-copying, and preserves input immutability. Syntax compilation and targeted behavioral assertions pass.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf9-2556-7aa2-bd3c-66ce579042d6",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 62208,
+          "input_tokens": 76533,
+          "output_tokens": 1844,
+          "reasoning_output_tokens": 218,
+          "uncached_input_tokens": 14325
+        }
+      },
+      "repetition": 1,
+      "run_order": 9,
+      "spec": {
+        "bytes": 1637,
+        "characters": 1637,
+        "lines": 41,
+        "words": 178
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r1",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "b89ed8c25bc279741f2f1b5d7b03322338a01cd3f57824f9f5ca3bbf63300e4d",
+        "spec_sha256": "99671cca8a81755421d4c361033da01412bf56260ac69c39ec13f775f35eb346",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 42.392,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/010-order-transitions-baseline-r1/order-transitions/solution.py).\n\nIt now handles all specified transitions, deterministic errors, trimmed identifiers, deep-copying, and input immutability. Syntax and core behavior checks passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cf9-d4e6-7211-b0d6-7816899caa85",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 63232,
+          "input_tokens": 77796,
+          "output_tokens": 1738,
+          "reasoning_output_tokens": 100,
+          "uncached_input_tokens": 14564
+        }
+      },
+      "repetition": 1,
+      "run_order": 10,
+      "spec": {
+        "bytes": 2030,
+        "characters": 2030,
+        "lines": 40,
+        "words": 292
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r1",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "a052a188bfd1b992b59ab80027b5c782a9c9d2c86309ebcbce1d65d67633122b",
+        "spec_sha256": "047f7763f2a09a0693ec15b8e8ad17a7cd6de9dc0e83afac9a5bf8d6ee671bb3",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 51.401,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/011-retry-schedule-baseline-r1/retry-schedule/solution.py).\n\nIt now:\n- validates integer/non-negative inputs (rejecting booleans),\n- produces capped exponential-backoff delays with `retry_after`,\n- returns an empty list for zero attempts.\n\nVerified with `python3 -m py_compile` and focused edge/error assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cfa-7be2-7120-9200-fc91c87453f6",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 82432,
+          "input_tokens": 92508,
+          "output_tokens": 1923,
+          "reasoning_output_tokens": 121,
+          "uncached_input_tokens": 10076
+        }
+      },
+      "repetition": 1,
+      "run_order": 11,
+      "spec": {
+        "bytes": 1695,
+        "characters": 1693,
+        "lines": 13,
+        "words": 260
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r1",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "0f282e277431cac10168e24891c75e55a276add89b247a319b838c18feb926e7",
+        "spec_sha256": "c5fa71852d8c6b4796c0a02c9a90e46a1496a1bd119b14f190a8c10a74e18bde",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 43.209,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/012-retry-schedule-semantic-r1/retry-schedule/solution.py).\n\nIt now validates inputs with specified errors and returns capped exponential delays with the `retry_after` floor. Verified with `python3 -m py_compile` and behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cfb-43dc-74b3-a57a-b7dc0564b614",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 78336,
+          "input_tokens": 91510,
+          "output_tokens": 1692,
+          "reasoning_output_tokens": 140,
+          "uncached_input_tokens": 13174
+        }
+      },
+      "repetition": 1,
+      "run_order": 12,
+      "spec": {
+        "bytes": 1035,
+        "characters": 1035,
+        "lines": 31,
+        "words": 134
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r1",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "518b96f0dcacc04fa6831ad0880c6de61c5f077ddfa1528ad1d10a104b9f881f",
+        "spec_sha256": "d0fd150a97681a7d8c279f310e75e5125d78a46b89d65b344bc68b0e8de6923c",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 47.383,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/013-email-routing-semantic-r1/email-routing/solution.py).\n\nVerified with `python3 -m py_compile` and routing checks covering precedence, spam override, normalization, defaults, urgency, and input preservation.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cfb-ed00-7ea2-9a70-c85cb438cb7d",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 67328,
+          "input_tokens": 76566,
+          "output_tokens": 1827,
+          "reasoning_output_tokens": 201,
+          "uncached_input_tokens": 9238
+        }
+      },
+      "repetition": 1,
+      "run_order": 13,
+      "spec": {
+        "bytes": 1364,
+        "characters": 1356,
+        "lines": 31,
+        "words": 160
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r1",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "e6ff804db7d83a24e6b0da01d32f51afa3adc4c2adb972d53bd4a8adf6e7759d",
+        "spec_sha256": "68167c8c1cf1e9a88bb4ce5be6427bf73d1d66132e8b6787bf8f9f0acb2e3113",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 67.046,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/014-email-routing-baseline-r1/email-routing/solution.py).\n\nIt handles normalization, spam precedence, recipient/content queue precedence, priority tokens, preserves recipient ordering/duplicates, and avoids input mutation.\n\nVerified with `python3 -m py_compile` and representative assertions.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:41:49.844851Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05cfc-a631-7392-9a59-434599bb07b0",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 110592,
+          "input_tokens": 130404,
+          "output_tokens": 2505,
+          "reasoning_output_tokens": 439,
+          "uncached_input_tokens": 19812
+        }
+      },
+      "repetition": 1,
+      "run_order": 14,
+      "spec": {
+        "bytes": 2021,
+        "characters": 2021,
+        "lines": 37,
+        "words": 301
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r3",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "a052a188bfd1b992b59ab80027b5c782a9c9d2c86309ebcbce1d65d67633122b",
+        "spec_sha256": "047f7763f2a09a0693ec15b8e8ad17a7cd6de9dc0e83afac9a5bf8d6ee671bb3",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 45.388,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/015-retry-schedule-baseline-r3/retry-schedule/solution.py).\n\nIt now validates all inputs (including booleans), returns the specified capped exponential schedule, and handles `retry_after`. Syntax compilation and representative behavior/error checks pass with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cfd-aeba-70a2-91e4-ff02ea6ee7b4",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 77312,
+          "input_tokens": 92568,
+          "output_tokens": 1802,
+          "reasoning_output_tokens": 92,
+          "uncached_input_tokens": 15256
+        }
+      },
+      "repetition": 3,
+      "run_order": 15,
+      "spec": {
+        "bytes": 1695,
+        "characters": 1693,
+        "lines": 13,
+        "words": 260
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r3",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "0f282e277431cac10168e24891c75e55a276add89b247a319b838c18feb926e7",
+        "spec_sha256": "c5fa71852d8c6b4796c0a02c9a90e46a1496a1bd119b14f190a8c10a74e18bde",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 68.436,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/016-retry-schedule-semantic-r3/retry-schedule/solution.py).\n\nIt now validates inputs precisely, excludes booleans, returns capped exponential delays respecting `retry_after`, and leaves inputs unchanged. Syntax compilation and representative behavior/error checks passed.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:43:34.387883Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf ./__pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf ./__pycache__'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf ./__pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf ./__pycache__'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05cfe-5f34-7071-a6b1-31e12f092bb0",
+        "tool_call_total": 8,
+        "tool_calls": {
+          "command_execution": 7,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 140800,
+          "input_tokens": 160858,
+          "output_tokens": 2437,
+          "reasoning_output_tokens": 694,
+          "uncached_input_tokens": 20058
+        }
+      },
+      "repetition": 3,
+      "run_order": 16,
+      "spec": {
+        "bytes": 1035,
+        "characters": 1035,
+        "lines": 31,
+        "words": 134
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r1",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "e68f97c0d232179c3b973e5a2ca70fe96afa58d2707db6bd00ecbb603d4cef40",
+        "spec_sha256": "f530e5d90a2a8925aa07dabc1546c4aa8ff3843cec3349914c995261c4b69078",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 69.77,
+        "event_errors": [],
+        "final_message": "Implemented targeted feature-flag evaluation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/017-feature-flags-semantic-r1/feature-flags/solution.py).\n\nIt now handles exact enabled checks, targeting gates, deterministic SHA-256 rollout bucketing, memoized dependencies, missing dependencies, and cycles without mutating inputs.\n\nVerified with `python3 -m py_compile solution.py` and behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05cff-6a70-7550-8c4b-55820c291344",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 94033,
+          "output_tokens": 2931,
+          "reasoning_output_tokens": 866,
+          "uncached_input_tokens": 14673
+        }
+      },
+      "repetition": 1,
+      "run_order": 17,
+      "spec": {
+        "bytes": 1231,
+        "characters": 1231,
+        "lines": 33,
+        "words": 161
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "feature-flags",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 4,
+        "task_success": true,
+        "total": 4
+      },
+      "pair_id": "feature-flags:r1",
+      "provenance": {
+        "fixture_sha256": "b72aaf62c18ec5eadbbf8b319b615062310f61a071cdf6cb7e8a6c79bc2a57bf",
+        "prompt_sha256": "1006c10adb6998b61946a8703c547a18005884c62fcb1d278204081b8e748030",
+        "spec_sha256": "24e66cceb9632b0ce7bad509d9b97718c0b4ae1b118be0735c24fbbf44693adb",
+        "starter_sha256": "b5809d92ca94a07e8a9732c610a05a8e6324b542cba982aacdd14a9c2b5a43a2"
+      },
+      "provider": {
+        "duration_seconds": 60.8,
+        "event_errors": [],
+        "final_message": "Implemented `evaluate_flags` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/018-feature-flags-baseline-r1/feature-flags/solution.py).\n\nIt now handles exact booleans, all targeting gates, deterministic SHA-256 rollout bucketing, dependency chains, missing dependencies, and dependency cycles without mutating inputs.\n\nVerified with `python3 -m py_compile` and focused behavioral assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d00-7b4c-7f80-adba-9e8c07dae11d",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 94647,
+          "output_tokens": 2644,
+          "reasoning_output_tokens": 479,
+          "uncached_input_tokens": 15287
+        }
+      },
+      "repetition": 1,
+      "run_order": 18,
+      "spec": {
+        "bytes": 2129,
+        "characters": 2123,
+        "lines": 15,
+        "words": 349
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r2",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "0e6f70da8b0ba364ee1f03d81da314550811cdee9b3327a1cde3e677f14deb7e",
+        "spec_sha256": "189a8c3187898e40c2f55f2155c35618d1e16ba547d5ea8d6024306952d9a81b",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 52.082,
+        "event_errors": [],
+        "final_message": "Implemented `calculate_invoice` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/019-invoice-totals-baseline-r2/invoice-totals/solution.py).\n\nIt validates required numeric fields (excluding booleans), applies capped discounts, rounds tax half-up using integer math, and preserves input data. Syntax and a representative behavior check passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d01-68f4-70f3-b0d8-009a21b9ce7c",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 68352,
+          "input_tokens": 77817,
+          "output_tokens": 1776,
+          "reasoning_output_tokens": 122,
+          "uncached_input_tokens": 9465
+        }
+      },
+      "repetition": 2,
+      "run_order": 19,
+      "spec": {
+        "bytes": 1936,
+        "characters": 1936,
+        "lines": 38,
+        "words": 291
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r2",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "ad5fa6e6c07105fcdecd0b4f16197174edcb61ff7258a815d67ce555c33bde26",
+        "spec_sha256": "89b9762ee6e7259b1d7fe85ca45b3aa4d0959a7495b3b5eaa210f9b39e1ac087",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 60.019,
+        "event_errors": [],
+        "final_message": "Implemented `calculate_invoice` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/020-invoice-totals-semantic-r2/invoice-totals/solution.py).\n\nIt now validates inputs (including rejecting booleans), preserves the input, calculates integer-cent totals with capped discounts and half-up tax rounding, and returns the exact required shape.\n\nVerified with `python3 -m py_compile solution.py` and focused edge-case assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d02-348d-7493-9865-9424db88828a",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 94540,
+          "output_tokens": 2651,
+          "reasoning_output_tokens": 266,
+          "uncached_input_tokens": 15180
+        }
+      },
+      "repetition": 2,
+      "run_order": 20,
+      "spec": {
+        "bytes": 1603,
+        "characters": 1603,
+        "lines": 29,
+        "words": 182
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r3",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "29648c432f94ac10b2e161eafad0b5cc70e37f2c3269d397e29b059b87b14fb5",
+        "spec_sha256": "51d77792811027989a1d7cb233b541833e98593be6393d5b0a9bfc6ecc86cac9",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 68.622,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/021-inventory-reservation-semantic-r3/inventory-reservation/solution.py:1).\n\nIt now validates inputs with the exact specified messages, trims IDs/SKUs, aggregates duplicates in first-seen order, returns atomic success/failure payloads, preserves inventory without mutation, and excludes booleans from integer quantities.\n\nVerified with `python3 -m py_compile` and targeted behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d03-1f48-7073-8d3b-85c836fb9eb4",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 78336,
+          "input_tokens": 94772,
+          "output_tokens": 2924,
+          "reasoning_output_tokens": 479,
+          "uncached_input_tokens": 16436
+        }
+      },
+      "repetition": 3,
+      "run_order": 21,
+      "spec": {
+        "bytes": 1615,
+        "characters": 1615,
+        "lines": 28,
+        "words": 202
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r3",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "e88c6dba8afa23dfda937e64da2c4c1a5439c0b5ba74caff1f9bcc80463b7bbb",
+        "spec_sha256": "7a442c14d4b9e304f43bbcdbb23dba7355abfda653d768024a186647cd496bda",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 63.214,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/022-inventory-reservation-baseline-r3/inventory-reservation/solution.py).\n\nIt validates inputs, normalizes IDs/SKUs, aggregates repeated SKUs in first-seen order, preserves atomicity, and avoids mutating either input. Syntax and representative success/failure cases passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d04-2b76-7ab3-b22c-7c1c431010ee",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 69376,
+          "input_tokens": 79462,
+          "output_tokens": 2600,
+          "reasoning_output_tokens": 391,
+          "uncached_input_tokens": 10086
+        }
+      },
+      "repetition": 3,
+      "run_order": 22,
+      "spec": {
+        "bytes": 1989,
+        "characters": 1989,
+        "lines": 42,
+        "words": 281
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r3",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "7a5cd04f189c12c4cc95c0f60402dafcb4a16d7badf59fa9e60f8edef2a6ee1d",
+        "spec_sha256": "98cf8179dc52e938207521446733a6262272b610b1d9918f1ecc909bc8d40189",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 83.562,
+        "event_errors": [],
+        "final_message": "Implemented webhook validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/023-webhook-validation-baseline-r3/webhook-validation/solution.py).\n\nIt now performs canonical JSON HMAC-SHA256 verification, strict signature-header validation, timestamp tolerance checks, rotated `v1` support, and returns only the specified result reasons.\n\nVerified with `python3 -m py_compile` and focused behavioral assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d05-22ad-7e50-bf28-f61b61b6b42f",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 102656,
+          "input_tokens": 114608,
+          "output_tokens": 3636,
+          "reasoning_output_tokens": 889,
+          "uncached_input_tokens": 11952
+        }
+      },
+      "repetition": 3,
+      "run_order": 23,
+      "spec": {
+        "bytes": 2065,
+        "characters": 2065,
+        "lines": 13,
+        "words": 298
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r3",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "8af18d39e06693102584a0a6a23a051133445dc8c894cf4aa6f87dc07db200c4",
+        "spec_sha256": "1ee1b4cd3ea5cb54320a295f70747e945a784aa3b685583c3f5ab95d2e77201b",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 114.592,
+        "event_errors": [],
+        "final_message": "Implemented timestamped HMAC webhook validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/solution.py).\n\nIt now strictly parses headers, validates input types/signatures, applies expiry checks, canonicalizes the JSON payload exactly as specified, and uses constant-time HMAC comparison.\n\nVerified with representative valid, mismatch, expired, and malformed cases; syntax compilation passed.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:52:12.803034Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/solution.py\n2026-09-01T12:53:19.041742Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf /tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/__pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf /tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/__pycache__'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf /tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/__pycache__ && git status --short && python3 -m py_compile solution.py && rm -rf /tmp/semantic-spec-bench-ri0r_mvp/024-webhook-validation-semantic-r3/webhook-validation/__pycache__'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05d06-6995-7903-abda-2e63e249c042",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 152064,
+          "input_tokens": 175131,
+          "output_tokens": 5210,
+          "reasoning_output_tokens": 1767,
+          "uncached_input_tokens": 23067
+        }
+      },
+      "repetition": 3,
+      "run_order": 24,
+      "spec": {
+        "bytes": 1355,
+        "characters": 1355,
+        "lines": 34,
+        "words": 151
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r2",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "57a8f892c3c947f2d610993f1af4c16f5ed36911b27d12028f95da04c0024438",
+        "spec_sha256": "50ffae4243c2fe1112c788e27486152f5dd0725107f1e352557cc231aeee2484",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 83.362,
+        "event_errors": [],
+        "final_message": "Implemented canonical opaque cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/025-cursor-pagination-semantic-r2/cursor-pagination/solution.py).\n\nIt now validates inputs, decodes/encodes URL-safe JSON cursors exactly, handles end-of-records offsets, preserves records, and returns only `items` and `next_cursor`.\n\nVerified with `python3 -m py_compile` plus behavior assertions and whitespace checks.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:54:02.181987Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/025-cursor-pagination-semantic-r2/cursor-pagination/solution.py\n",
+        "thread_id": "01a05d08-2928-7a60-bbed-84b918d7d07c",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 96512,
+          "input_tokens": 113196,
+          "output_tokens": 3666,
+          "reasoning_output_tokens": 774,
+          "uncached_input_tokens": 16684
+        }
+      },
+      "repetition": 2,
+      "run_order": 25,
+      "spec": {
+        "bytes": 1320,
+        "characters": 1320,
+        "lines": 33,
+        "words": 173
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r2",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "4815ad4a283ddf3c6ff67bdbf8dfae72b611eafaebdd8161a467489210cefaf9",
+        "spec_sha256": "5416224296ef6ad8c1d65df6797b16c06f062dd25a71dfde55add6833d510fe3",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 76.38,
+        "event_errors": [],
+        "final_message": "Implemented cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/026-cursor-pagination-baseline-r2/cursor-pagination/solution.py).\n\nIt now validates limits and cursors, generates canonical URL-safe Base64 cursors, preserves inputs, handles final/empty pages, and reports required errors. Syntax and targeted behavior checks passed with `python3 -m py_compile`.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:55:21.613073Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/026-cursor-pagination-baseline-r2/cursor-pagination/solution.py\n",
+        "thread_id": "01a05d09-6f04-7bb0-b3df-87236b39e779",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 94464,
+          "input_tokens": 112853,
+          "output_tokens": 3369,
+          "reasoning_output_tokens": 414,
+          "uncached_input_tokens": 18389
+        }
+      },
+      "repetition": 2,
+      "run_order": 26,
+      "spec": {
+        "bytes": 1923,
+        "characters": 1923,
+        "lines": 13,
+        "words": 309
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r2",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "e6ff804db7d83a24e6b0da01d32f51afa3adc4c2adb972d53bd4a8adf6e7759d",
+        "spec_sha256": "68167c8c1cf1e9a88bb4ce5be6427bf73d1d66132e8b6787bf8f9f0acb2e3113",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 50.562,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/027-email-routing-baseline-r2/email-routing/solution.py).\n\nIt normalizes addresses, applies spam/recipient/content precedence, derives priority, preserves recipient order/duplicates, and avoids mutating inputs. Syntax and representative behavior checks pass with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d0a-99a3-7f10-b0d2-475c6bc2d3e7",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 63232,
+          "input_tokens": 77987,
+          "output_tokens": 1975,
+          "reasoning_output_tokens": 46,
+          "uncached_input_tokens": 14755
+        }
+      },
+      "repetition": 2,
+      "run_order": 27,
+      "spec": {
+        "bytes": 2021,
+        "characters": 2021,
+        "lines": 37,
+        "words": 301
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r2",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "518b96f0dcacc04fa6831ad0880c6de61c5f077ddfa1528ad1d10a104b9f881f",
+        "spec_sha256": "d0fd150a97681a7d8c279f310e75e5125d78a46b89d65b344bc68b0e8de6923c",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 46.963,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/028-email-routing-semantic-r2/email-routing/solution.py).\n\nIt now handles normalization, spam/domain detection, recipient and content precedence, urgency priority, empty fields, and preserves the input message. Syntax compilation and routing checks pass with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d0b-5f57-7ac1-900b-11b6bc3099e6",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 62208,
+          "input_tokens": 76283,
+          "output_tokens": 1649,
+          "reasoning_output_tokens": 196,
+          "uncached_input_tokens": 14075
+        }
+      },
+      "repetition": 2,
+      "run_order": 28,
+      "spec": {
+        "bytes": 1364,
+        "characters": 1356,
+        "lines": 31,
+        "words": 160
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r1",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "8af18d39e06693102584a0a6a23a051133445dc8c894cf4aa6f87dc07db200c4",
+        "spec_sha256": "1ee1b4cd3ea5cb54320a295f70747e945a784aa3b685583c3f5ab95d2e77201b",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 113.053,
+        "event_errors": [],
+        "final_message": "Implemented timestamped HMAC webhook validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/029-webhook-validation-semantic-r1/webhook-validation/solution.py).\n\nIt now validates header structure/types, timestamp tolerance, canonical JSON/HMAC-SHA256 signatures, and uses constant-time comparisons across all `v1` values.\n\nVerified with `python3 -m py_compile` and targeted acceptance-style checks.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T12:58:31.500376Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/029-webhook-validation-semantic-r1/webhook-validation/solution.py\n",
+        "thread_id": "01a05d0c-16fb-7db0-a93c-fa22e910851e",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 121856,
+          "input_tokens": 136496,
+          "output_tokens": 5046,
+          "reasoning_output_tokens": 1631,
+          "uncached_input_tokens": 14640
+        }
+      },
+      "repetition": 1,
+      "run_order": 29,
+      "spec": {
+        "bytes": 1355,
+        "characters": 1355,
+        "lines": 34,
+        "words": 151
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "webhook-validation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-validation:r1",
+      "provenance": {
+        "fixture_sha256": "3c627a28aa81933494e427f5cb967089eb95777b0bdee1639e808af0cde90ed8",
+        "prompt_sha256": "7a5cd04f189c12c4cc95c0f60402dafcb4a16d7badf59fa9e60f8edef2a6ee1d",
+        "spec_sha256": "98cf8179dc52e938207521446733a6262272b610b1d9918f1ecc909bc8d40189",
+        "starter_sha256": "64996c39dac208d53db43e78b4ea89450503a31691143662b781160e03d03b32"
+      },
+      "provider": {
+        "duration_seconds": 69.603,
+        "event_errors": [],
+        "final_message": "Implemented webhook signature validation in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/030-webhook-validation-baseline-r1/webhook-validation/solution.py).\n\nIt now canonicalizes JSON, validates header structure and types, checks timestamp tolerance, performs HMAC-SHA256 verification against rotated `v1` signatures, and returns only the specified result shapes.\n\nVerified with `python3 -m py_compile` and targeted behavior checks.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d0d-d11a-75e1-8ba4-fe3fa7040d3b",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 78336,
+          "input_tokens": 95322,
+          "output_tokens": 2582,
+          "reasoning_output_tokens": 806,
+          "uncached_input_tokens": 16986
+        }
+      },
+      "repetition": 1,
+      "run_order": 30,
+      "spec": {
+        "bytes": 2065,
+        "characters": 2065,
+        "lines": 13,
+        "words": 298
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r1",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "0e6f70da8b0ba364ee1f03d81da314550811cdee9b3327a1cde3e677f14deb7e",
+        "spec_sha256": "189a8c3187898e40c2f55f2155c35618d1e16ba547d5ea8d6024306952d9a81b",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 58.862,
+        "event_errors": [],
+        "final_message": "Implemented `calculate_invoice` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/031-invoice-totals-baseline-r1/invoice-totals/solution.py).\n\nIt validates specified numeric inputs (including booleans), calculates capped discounts and half-up tax using integer cents, preserves item order, and leaves inputs unchanged.\n\nVerified with `python3 -m py_compile solution.py` and boundary-case assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d0e-e137-7eb0-b3d7-2a2af04253a4",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 69376,
+          "input_tokens": 79170,
+          "output_tokens": 2481,
+          "reasoning_output_tokens": 279,
+          "uncached_input_tokens": 9794
+        }
+      },
+      "repetition": 1,
+      "run_order": 31,
+      "spec": {
+        "bytes": 1936,
+        "characters": 1936,
+        "lines": 38,
+        "words": 291
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r1",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "ad5fa6e6c07105fcdecd0b4f16197174edcb61ff7258a815d67ce555c33bde26",
+        "spec_sha256": "89b9762ee6e7259b1d7fe85ca45b3aa4d0959a7495b3b5eaa210f9b39e1ac087",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 48.85,
+        "event_errors": [],
+        "final_message": "Implemented `calculate_invoice` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/032-invoice-totals-semantic-r1/invoice-totals/solution.py).\n\nIt now validates inputs (including rejecting booleans), preserves the input, computes totals using integer-only half-up tax rounding, and returns the exact required shape. Python compilation and focused behavioral checks pass.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d0f-c753-79e0-925b-08e18e64db0b",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 67328,
+          "input_tokens": 77051,
+          "output_tokens": 1888,
+          "reasoning_output_tokens": 181,
+          "uncached_input_tokens": 9723
+        }
+      },
+      "repetition": 1,
+      "run_order": 32,
+      "spec": {
+        "bytes": 1603,
+        "characters": 1603,
+        "lines": 29,
+        "words": 182
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r3",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "518b96f0dcacc04fa6831ad0880c6de61c5f077ddfa1528ad1d10a104b9f881f",
+        "spec_sha256": "d0fd150a97681a7d8c279f310e75e5125d78a46b89d65b344bc68b0e8de6923c",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 60.639,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/033-email-routing-semantic-r3/email-routing/solution.py).\n\nIt handles normalization, spam and recipient precedence, content routing, urgency priority, and preserves the input message. Verified with `python3 -m py_compile` and representative routing/immutability assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d10-865f-7f12-944b-6eb9cb0f24b2",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 83456,
+          "input_tokens": 93406,
+          "output_tokens": 2381,
+          "reasoning_output_tokens": 351,
+          "uncached_input_tokens": 9950
+        }
+      },
+      "repetition": 3,
+      "run_order": 33,
+      "spec": {
+        "bytes": 1364,
+        "characters": 1356,
+        "lines": 31,
+        "words": 160
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "email-routing",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "email-routing:r3",
+      "provenance": {
+        "fixture_sha256": "c6febc57f569efff8557d5a5e7d3db6699e077ccbdfd72d6c9b646126a84dd1a",
+        "prompt_sha256": "e6ff804db7d83a24e6b0da01d32f51afa3adc4c2adb972d53bd4a8adf6e7759d",
+        "spec_sha256": "68167c8c1cf1e9a88bb4ce5be6427bf73d1d66132e8b6787bf8f9f0acb2e3113",
+        "starter_sha256": "f1b5ba3eed19a609eb9c243fcf23dbee0e7e4ebc73e6e56370a4f91425a269a2"
+      },
+      "provider": {
+        "duration_seconds": 41.875,
+        "event_errors": [],
+        "final_message": "Implemented `route_email` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/034-email-routing-baseline-r3/email-routing/solution.py).\n\nIt now normalizes addresses, applies spam/recipient/content queue precedence, assigns priority, preserves recipient ordering/duplicates, and avoids mutating input. Syntax compilation and smoke checks passed.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d11-735f-73b3-8e91-49c3677b7c19",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 63232,
+          "input_tokens": 77296,
+          "output_tokens": 1585,
+          "reasoning_output_tokens": 29,
+          "uncached_input_tokens": 14064
+        }
+      },
+      "repetition": 3,
+      "run_order": 34,
+      "spec": {
+        "bytes": 2021,
+        "characters": 2021,
+        "lines": 37,
+        "words": 301
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r2",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "e88c6dba8afa23dfda937e64da2c4c1a5439c0b5ba74caff1f9bcc80463b7bbb",
+        "spec_sha256": "7a442c14d4b9e304f43bbcdbb23dba7355abfda653d768024a186647cd496bda",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 54.755,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/035-inventory-reservation-baseline-r2/inventory-reservation/solution.py).\n\nIt handles validation, whitespace normalization, SKU aggregation/order, atomic stock updates, shortages, and preserves both input objects. Syntax and targeted behavior checks pass with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d12-173b-77b0-b49a-78bf5d6ed6f6",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 69376,
+          "input_tokens": 78934,
+          "output_tokens": 2397,
+          "reasoning_output_tokens": 274,
+          "uncached_input_tokens": 9558
+        }
+      },
+      "repetition": 2,
+      "run_order": 35,
+      "spec": {
+        "bytes": 1989,
+        "characters": 1989,
+        "lines": 42,
+        "words": 281
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r2",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "29648c432f94ac10b2e161eafad0b5cc70e37f2c3269d397e29b059b87b14fb5",
+        "spec_sha256": "51d77792811027989a1d7cb233b541833e98593be6393d5b0a9bfc6ecc86cac9",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 63.25,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/036-inventory-reservation-semantic-r2/inventory-reservation/solution.py).\n\nIt now validates all specified inputs/messages, trims IDs/SKUs, aggregates duplicates in first-seen order, preserves case sensitivity, returns atomic success/failure shapes, and never mutates the input inventory.\n\nVerified with `python3 -m py_compile solution.py` and focused behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d12-ed5a-73d3-9bc6-2e6f52130fd3",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 94726,
+          "output_tokens": 2748,
+          "reasoning_output_tokens": 396,
+          "uncached_input_tokens": 15366
+        }
+      },
+      "repetition": 2,
+      "run_order": 36,
+      "spec": {
+        "bytes": 1615,
+        "characters": 1615,
+        "lines": 28,
+        "words": 202
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r2",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "0f282e277431cac10168e24891c75e55a276add89b247a319b838c18feb926e7",
+        "spec_sha256": "c5fa71852d8c6b4796c0a02c9a90e46a1496a1bd119b14f190a8c10a74e18bde",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 47.907,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/037-retry-schedule-semantic-r2/retry-schedule/solution.py:1).\n\nIt now validates inputs precisely, rejects booleans, returns capped exponential delays with `retry_after` flooring, and leaves inputs unchanged.\n\nVerified with `python3` syntax compilation, representative behavior checks, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d13-e48a-7120-81c6-7d4eb91c15d9",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 77312,
+          "input_tokens": 91295,
+          "output_tokens": 1581,
+          "reasoning_output_tokens": 80,
+          "uncached_input_tokens": 13983
+        }
+      },
+      "repetition": 2,
+      "run_order": 37,
+      "spec": {
+        "bytes": 1035,
+        "characters": 1035,
+        "lines": 31,
+        "words": 134
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "retry-schedule",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "retry-schedule:r2",
+      "provenance": {
+        "fixture_sha256": "2fa19a0ff20507fda4978054f30bc629b73ed57422830af8d9733e1aca2baada",
+        "prompt_sha256": "a052a188bfd1b992b59ab80027b5c782a9c9d2c86309ebcbce1d65d67633122b",
+        "spec_sha256": "047f7763f2a09a0693ec15b8e8ad17a7cd6de9dc0e83afac9a5bf8d6ee671bb3",
+        "starter_sha256": "e39f9cfdd3ef80c5a1198ad81312e85575bf55a65f57b63ce65eb0787175e832"
+      },
+      "provider": {
+        "duration_seconds": 62.375,
+        "event_errors": [],
+        "final_message": "Implemented `build_retry_schedule` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/038-retry-schedule-baseline-r2/retry-schedule/solution.py).\n\nIt now:\n- Validates all inputs, rejecting booleans.\n- Raises the specified error messages.\n- Produces capped exponential schedules with `retry_after` lower bounds.\n- Handles zero attempts correctly.\n\nVerified with focused edge-case assertions, `py_compile`, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d14-9fe9-7730-b697-91b85aa279b3",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 93522,
+          "output_tokens": 2316,
+          "reasoning_output_tokens": 478,
+          "uncached_input_tokens": 14162
+        }
+      },
+      "repetition": 2,
+      "run_order": 38,
+      "spec": {
+        "bytes": 1695,
+        "characters": 1693,
+        "lines": 13,
+        "words": 260
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r1",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "e88c6dba8afa23dfda937e64da2c4c1a5439c0b5ba74caff1f9bcc80463b7bbb",
+        "spec_sha256": "7a442c14d4b9e304f43bbcdbb23dba7355abfda653d768024a186647cd496bda",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 78.881,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/039-inventory-reservation-baseline-r1/inventory-reservation/solution.py).\n\nIt now validates inputs, trims/aggregates SKUs, preserves first-seen order, handles atomic shortages, and avoids mutating either input. Syntax compilation and success/failure smoke tests passed.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T13:09:15.018531Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05d15-93ca-71c3-bb4d-d5d3e694efb9",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 6,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 132864,
+          "input_tokens": 152114,
+          "output_tokens": 3126,
+          "reasoning_output_tokens": 608,
+          "uncached_input_tokens": 19250
+        }
+      },
+      "repetition": 1,
+      "run_order": 39,
+      "spec": {
+        "bytes": 1989,
+        "characters": 1989,
+        "lines": 42,
+        "words": 281
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "inventory-reservation",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "inventory-reservation:r1",
+      "provenance": {
+        "fixture_sha256": "350c34d6d324747059aca2bb908e736effc4c1d59b7de456f8e0763568b4cebc",
+        "prompt_sha256": "29648c432f94ac10b2e161eafad0b5cc70e37f2c3269d397e29b059b87b14fb5",
+        "spec_sha256": "51d77792811027989a1d7cb233b541833e98593be6393d5b0a9bfc6ecc86cac9",
+        "starter_sha256": "e7bd3232fd04546c1ad8a5616a57265f29eeee6b0c7b98da5ff916fda7eab4d7"
+      },
+      "provider": {
+        "duration_seconds": 88.854,
+        "event_errors": [],
+        "final_message": "Implemented `reserve_inventory` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/040-inventory-reservation-semantic-r1/inventory-reservation/solution.py).\n\nIt validates all specified inputs/messages, trims IDs and SKUs, aggregates duplicates in first-seen order, preserves case sensitivity, reports all shortages atomically, and never mutates the input inventory.\n\nVerified with `python3 -m py_compile solution.py` and representative success, failure, empty-request, and validation assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d16-c826-7281-b323-a4fd35a54f3c",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 93440,
+          "input_tokens": 113158,
+          "output_tokens": 3166,
+          "reasoning_output_tokens": 418,
+          "uncached_input_tokens": 19718
+        }
+      },
+      "repetition": 1,
+      "run_order": 40,
+      "spec": {
+        "bytes": 1615,
+        "characters": 1615,
+        "lines": 28,
+        "words": 202
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r3",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "62f8c08de40c9e7bfac6ce779b5751b5b9a5739281be8c8da5daa61e2de354d0",
+        "spec_sha256": "39b7604ae77a4a35a7e23b5175be0fb540cdcc7e52c4afef412529c7e45f75b9",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 60.553,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/041-order-transitions-semantic-r3/order-transitions/solution.py).\n\nIt now handles all specified transitions and errors, validates identifiers after transition checks, deep-copies successful orders, preserves nested fields, trims required IDs, and leaves inputs unchanged.\n\nVerified with `python3 -m py_compile` and focused behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d18-2352-7733-8d2b-dec921f15937",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 83456,
+          "input_tokens": 93648,
+          "output_tokens": 2349,
+          "reasoning_output_tokens": 343,
+          "uncached_input_tokens": 10192
+        }
+      },
+      "repetition": 3,
+      "run_order": 41,
+      "spec": {
+        "bytes": 1637,
+        "characters": 1637,
+        "lines": 41,
+        "words": 178
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r3",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "b89ed8c25bc279741f2f1b5d7b03322338a01cd3f57824f9f5ca3bbf63300e4d",
+        "spec_sha256": "99671cca8a81755421d4c361033da01412bf56260ac69c39ec13f775f35eb346",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 73.817,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/042-order-transitions-baseline-r3/order-transitions/solution.py).\n\nIt now enforces all specified transitions, validates and trims payment/tracking IDs only after transition validation, deep-copies successful orders, and returns deterministic errors without mutating inputs.\n\nVerified with `python3 -m py_compile` and representative behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T13:12:57.488114Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf -- __pycache__ && git status --short'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05d19-1035-7da1-87c7-6ffa745b5d39",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 6,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 136960,
+          "input_tokens": 150641,
+          "output_tokens": 2882,
+          "reasoning_output_tokens": 727,
+          "uncached_input_tokens": 13681
+        }
+      },
+      "repetition": 3,
+      "run_order": 42,
+      "spec": {
+        "bytes": 2030,
+        "characters": 2030,
+        "lines": 40,
+        "words": 292
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r2",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "b89ed8c25bc279741f2f1b5d7b03322338a01cd3f57824f9f5ca3bbf63300e4d",
+        "spec_sha256": "99671cca8a81755421d4c361033da01412bf56260ac69c39ec13f775f35eb346",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 49.076,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/043-order-transitions-baseline-r2/order-transitions/solution.py).\n\nIt now enforces lifecycle transitions, validates/normalizes pay and ship identifiers, deep-copies successful orders, and returns deterministic errors. Syntax and behavior checks passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d1a-30be-75e2-ba66-4ba16e0a3bf3",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 68352,
+          "input_tokens": 78160,
+          "output_tokens": 1926,
+          "reasoning_output_tokens": 155,
+          "uncached_input_tokens": 9808
+        }
+      },
+      "repetition": 2,
+      "run_order": 43,
+      "spec": {
+        "bytes": 2030,
+        "characters": 2030,
+        "lines": 40,
+        "words": 292
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "order-transitions",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 11,
+        "task_success": true,
+        "total": 11
+      },
+      "pair_id": "order-transitions:r2",
+      "provenance": {
+        "fixture_sha256": "3352abc89fa600981a2ea5322b9e9f94571c5aa86a0934edd46113795b0a17c2",
+        "prompt_sha256": "62f8c08de40c9e7bfac6ce779b5751b5b9a5739281be8c8da5daa61e2de354d0",
+        "spec_sha256": "39b7604ae77a4a35a7e23b5175be0fb540cdcc7e52c4afef412529c7e45f75b9",
+        "starter_sha256": "f805a28fb28a88eaf1a3317d481c943e34670bcc245a4e4aac0e5a410baf16d7"
+      },
+      "provider": {
+        "duration_seconds": 76.049,
+        "event_errors": [],
+        "final_message": "Implemented `apply_order_event` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/044-order-transitions-semantic-r2/order-transitions/solution.py).\n\nIt now covers all specified transitions, exact error shapes and precedence, identifier trimming, deep-copy preservation, and input immutability. Syntax compilation and exhaustive transition checks pass.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d1a-f0b7-7a62-a342-0158f0a92792",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 93440,
+          "input_tokens": 111086,
+          "output_tokens": 2797,
+          "reasoning_output_tokens": 454,
+          "uncached_input_tokens": 17646
+        }
+      },
+      "repetition": 2,
+      "run_order": 44,
+      "spec": {
+        "bytes": 1637,
+        "characters": 1637,
+        "lines": 41,
+        "words": 178
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r1",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "57a8f892c3c947f2d610993f1af4c16f5ed36911b27d12028f95da04c0024438",
+        "spec_sha256": "50ffae4243c2fe1112c788e27486152f5dd0725107f1e352557cc231aeee2484",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 76.664,
+        "event_errors": [],
+        "final_message": "Implemented canonical opaque cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/045-cursor-pagination-semantic-r1/cursor-pagination/solution.py).\n\nIncludes strict limit/cursor validation, canonical URL-safe base64 JSON cursors, end-offset handling, and no input mutation. Verified with `python3 -m py_compile` and focused pagination/error-case assertions.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T13:15:47.731764Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/045-cursor-pagination-semantic-r1/cursor-pagination/solution.py\n",
+        "thread_id": "01a05d1c-1b2c-71a1-841d-2208fe32accf",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 109568,
+          "input_tokens": 129979,
+          "output_tokens": 3110,
+          "reasoning_output_tokens": 512,
+          "uncached_input_tokens": 20411
+        }
+      },
+      "repetition": 1,
+      "run_order": 45,
+      "spec": {
+        "bytes": 1320,
+        "characters": 1320,
+        "lines": 33,
+        "words": 173
+      },
+      "variant": "semantic"
+    },
+    {
+      "case": "cursor-pagination",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 2,
+        "acceptance_total": 2,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "cursor-pagination:r1",
+      "provenance": {
+        "fixture_sha256": "039cbe949503bd089d2f0cf402dd7da374a69d4363d5cb644a5edfe02fc94dca",
+        "prompt_sha256": "4815ad4a283ddf3c6ff67bdbf8dfae72b611eafaebdd8161a467489210cefaf9",
+        "spec_sha256": "5416224296ef6ad8c1d65df6797b16c06f062dd25a71dfde55add6833d510fe3",
+        "starter_sha256": "981846c4092953a8be486289d954d036247bb4755b22ef8b749ef9ef7dd31e7c"
+      },
+      "provider": {
+        "duration_seconds": 83.668,
+        "event_errors": [],
+        "final_message": "Implemented cursor pagination in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/046-cursor-pagination-baseline-r1/cursor-pagination/solution.py).\n\nVerified with `python3 -m py_compile` and targeted assertions for slicing, cursor encoding, final pages, empty input, invalid limits/cursors, past-end offsets, and input preservation.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T13:17:07.121253Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target /tmp/semantic-spec-bench-ri0r_mvp/046-cursor-pagination-baseline-r1/cursor-pagination/solution.py\n",
+        "thread_id": "01a05d1d-45cc-7c93-b03a-ab8c30832c3c",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 95488,
+          "input_tokens": 113911,
+          "output_tokens": 3838,
+          "reasoning_output_tokens": 993,
+          "uncached_input_tokens": 18423
+        }
+      },
+      "repetition": 1,
+      "run_order": 46,
+      "spec": {
+        "bytes": 1923,
+        "characters": 1923,
+        "lines": 13,
+        "words": 309
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r3",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "0e6f70da8b0ba364ee1f03d81da314550811cdee9b3327a1cde3e677f14deb7e",
+        "spec_sha256": "189a8c3187898e40c2f55f2155c35618d1e16ba547d5ea8d6024306952d9a81b",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 76.42,
+        "event_errors": [],
+        "final_message": "Implemented `calculate_invoice` in [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/047-invoice-totals-baseline-r3/invoice-totals/solution.py).\n\nIt validates specified inputs (including rejecting booleans), caps discounts, rounds tax half-up with integer arithmetic, preserves item order, and avoids mutating input. Syntax and representative behavior checks passed with `python3`.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-01T13:18:58.815153Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf /tmp/semantic-spec-bench-ri0r_mvp/047-invoice-totals-baseline-r3/invoice-totals/__pycache__ && git status --short'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf /tmp/semantic-spec-bench-ri0r_mvp/047-invoice-totals-baseline-r3/invoice-totals/__pycache__ && git status --short'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05d1e-8cfb-76a0-9db7-9c796233f283",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 119808,
+          "input_tokens": 133204,
+          "output_tokens": 3099,
+          "reasoning_output_tokens": 569,
+          "uncached_input_tokens": 13396
+        }
+      },
+      "repetition": 3,
+      "run_order": 47,
+      "spec": {
+        "bytes": 1936,
+        "characters": 1936,
+        "lines": 38,
+        "words": 291
+      },
+      "variant": "baseline"
+    },
+    {
+      "case": "invoice-totals",
+      "cost_usd": null,
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "invoice-totals:r3",
+      "provenance": {
+        "fixture_sha256": "7878765f4ee9f3eb4ff7ede3a53a1b3157c4f0d6bb6e43f2a8acccd9abcbf281",
+        "prompt_sha256": "ad5fa6e6c07105fcdecd0b4f16197174edcb61ff7258a815d67ce555c33bde26",
+        "spec_sha256": "89b9762ee6e7259b1d7fe85ca45b3aa4d0959a7495b3b5eaa210f9b39e1ac087",
+        "starter_sha256": "9c737794374f2cff06b15530d8b334dfdf44745b9226c211794b1996c1fe7256"
+      },
+      "provider": {
+        "duration_seconds": 58.055,
+        "event_errors": [],
+        "final_message": "Implemented [solution.py](/tmp/semantic-spec-bench-ri0r_mvp/048-invoice-totals-semantic-r3/invoice-totals/solution.py).\n\nIt now validates inputs (including booleans), calculates all totals with integer arithmetic and half-up tax rounding, caps discounts, excludes shipping from tax, and preserves input data.\n\nVerified with `python3 -m py_compile` and focused behavior assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05d1f-b7da-7883-a460-fda11a6a872c",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 94267,
+          "output_tokens": 2435,
+          "reasoning_output_tokens": 252,
+          "uncached_input_tokens": 14907
+        }
+      },
+      "repetition": 3,
+      "run_order": 48,
+      "spec": {
+        "bytes": 1603,
+        "characters": 1603,
+        "lines": 29,
+        "words": 182
+      },
+      "variant": "semantic"
+    }
+  ],
+  "run_id": "20260901T122611Z",
+  "schema_version": 1,
+  "seed": 20260901,
+  "static": [
+    {
+      "baseline": {
+        "bytes": 1923,
+        "characters": 1923,
+        "lines": 13,
+        "words": 309
+      },
+      "byte_reduction_percent": 31.36,
+      "case": "cursor-pagination",
+      "semantic": {
+        "bytes": 1320,
+        "characters": 1320,
+        "lines": 33,
+        "words": 173
+      },
+      "title": "Canonical opaque cursor pagination",
+      "word_reduction_percent": 44.01
+    },
+    {
+      "baseline": {
+        "bytes": 2021,
+        "characters": 2021,
+        "lines": 37,
+        "words": 301
+      },
+      "byte_reduction_percent": 32.51,
+      "case": "email-routing",
+      "semantic": {
+        "bytes": 1364,
+        "characters": 1356,
+        "lines": 31,
+        "words": 160
+      },
+      "title": "Deterministic customer email routing",
+      "word_reduction_percent": 46.84
+    },
+    {
+      "baseline": {
+        "bytes": 2129,
+        "characters": 2123,
+        "lines": 15,
+        "words": 349
+      },
+      "byte_reduction_percent": 42.18,
+      "case": "feature-flags",
+      "semantic": {
+        "bytes": 1231,
+        "characters": 1231,
+        "lines": 33,
+        "words": 161
+      },
+      "title": "Targeted feature flag evaluation",
+      "word_reduction_percent": 53.87
+    },
+    {
+      "baseline": {
+        "bytes": 1989,
+        "characters": 1989,
+        "lines": 42,
+        "words": 281
+      },
+      "byte_reduction_percent": 18.8,
+      "case": "inventory-reservation",
+      "semantic": {
+        "bytes": 1615,
+        "characters": 1615,
+        "lines": 28,
+        "words": 202
+      },
+      "title": "Atomic inventory reservation",
+      "word_reduction_percent": 28.11
+    },
+    {
+      "baseline": {
+        "bytes": 1936,
+        "characters": 1936,
+        "lines": 38,
+        "words": 291
+      },
+      "byte_reduction_percent": 17.2,
+      "case": "invoice-totals",
+      "semantic": {
+        "bytes": 1603,
+        "characters": 1603,
+        "lines": 29,
+        "words": 182
+      },
+      "title": "Integer-cent invoice totals",
+      "word_reduction_percent": 37.46
+    },
+    {
+      "baseline": {
+        "bytes": 2030,
+        "characters": 2030,
+        "lines": 40,
+        "words": 292
+      },
+      "byte_reduction_percent": 19.36,
+      "case": "order-transitions",
+      "semantic": {
+        "bytes": 1637,
+        "characters": 1637,
+        "lines": 41,
+        "words": 178
+      },
+      "title": "Order lifecycle event transitions",
+      "word_reduction_percent": 39.04
+    },
+    {
+      "baseline": {
+        "bytes": 1695,
+        "characters": 1693,
+        "lines": 13,
+        "words": 260
+      },
+      "byte_reduction_percent": 38.94,
+      "case": "retry-schedule",
+      "semantic": {
+        "bytes": 1035,
+        "characters": 1035,
+        "lines": 31,
+        "words": 134
+      },
+      "title": "Deterministic capped retry scheduling",
+      "word_reduction_percent": 48.46
+    },
+    {
+      "baseline": {
+        "bytes": 2065,
+        "characters": 2065,
+        "lines": 13,
+        "words": 298
+      },
+      "byte_reduction_percent": 34.38,
+      "case": "webhook-validation",
+      "semantic": {
+        "bytes": 1355,
+        "characters": 1355,
+        "lines": 34,
+        "words": 151
+      },
+      "title": "Timestamped HMAC webhook validation",
+      "word_reduction_percent": 49.33
+    }
+  ]
+}

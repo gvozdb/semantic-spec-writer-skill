@@ -1,0 +1,41 @@
+spec
+meta:
+  id: order-transitions
+  title: order lifecycle event transitions
+
+terms:
+  O: order object with status plus arbitrary fields
+  E: event object with type and optional payload
+  ok(O'): {ok:true,order:O'}
+  bad: {ok:false,error:...}
+
+api:
+  apply_order_event(O,E) -> ok(O')|bad
+
+state:
+  Order.status:
+    pending -> paid: pay(payment_id)
+    pending -> cancelled: cancel
+    paid -> packed: pack
+    paid -> cancelled: cancel
+    paid -> refunded: refund
+    packed -> shipped: ship(tracking_number)
+    packed -> refunded: refund
+    shipped -> delivered: deliver
+    shipped -> refunded: refund
+    delivered|cancelled|refunded -> no transitions
+
+rules:
+  R1: unknown E.type outside {pay,pack,ship,deliver,cancel,refund} -> {ok:false,error:unknown_event,event:E.type}
+  R2: known E.type disallowed from O.status -> {ok:false,error:invalid_transition,status:O.status,event:E.type}; check before payload
+  R3: allowed pay requires non-empty string E.payment_id; else {ok:false,error:missing_payment_id}; store strip(E.payment_id)
+  R4: allowed ship requires non-empty string E.tracking_number; else {ok:false,error:missing_tracking_number}; store strip(E.tracking_number)
+  R5: success deep-copies O, changes status, stores R3/R4 identifiers, keeps all other fields; ignore other E fields
+  R6: no generated fields; O and E unchanged for success/errors
+
+acceptance:
+  A1: implement every state edge and reject terminal/unsupported edges deterministically
+  A2: preserve arbitrary nested order fields and normalize required identifiers
+  A3: return exact success/error JSON shapes and do not mutate inputs
+
+open_questions: []

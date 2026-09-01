@@ -1,0 +1,33 @@
+spec
+meta:
+  file: feature-flags.spec.ctx
+  title: Targeted feature flag evaluation
+  status: benchmark
+
+terms:
+  U: user; U.id is a string; U.country,U.plan may be absent
+  F: ordered flag list; each F.key is unique
+  B(F,U): int(sha256(UTF8(U.id+":"+F.key)).hexdigest[:8],16) % 100
+
+goal:
+  G1: return {F.key: boolean decision} without mutating U or F
+
+rules:
+  R1: F.enabled must be exactly true; otherwise F=false
+  R2: if F.depends_on exists, resolve dependency for U; missing key or dependency cycle -> false
+  R3: present allow_users,countries,plans are AND gates on U.id,U.country,U.plan; missing value or empty/nonmatching list -> false
+  R4: rollout defaults 100; rollout=0 -> false; rollout=100 -> true after R1-R3; 0<rollout<100 -> B(F,U)<rollout
+  R5: evaluate dependencies with memoization; cycles and their dependents are false; return one key per F in input order
+  R6: use no randomness/time/network; preserve all inputs
+
+acceptance:
+  A1:
+    given: enabled flags with optional targeting and rollout
+    when: evaluate_flags(U,F) is called
+    then: decisions follow R1-R4 exactly
+  A2:
+    given: missing or cyclic dependencies
+    when: flags are resolved
+    then: affected flags are false
+
+open_questions: []

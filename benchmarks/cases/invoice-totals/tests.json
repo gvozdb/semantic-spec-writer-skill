@@ -1,0 +1,159 @@
+{
+  "tests": [
+    {
+      "name": "multiple lines discount tax and shipping",
+      "acceptance": "A1",
+      "call": "calculate_invoice",
+      "args": [
+        {
+          "items": [
+            {"description": "Notebook", "quantity": 2, "unit_price_cents": 1250},
+            {"description": "Pen", "quantity": 1, "unit_price_cents": 999}
+          ],
+          "discount_cents": 300,
+          "tax_rate_bps": 825,
+          "shipping_cents": 500
+        }
+      ],
+      "expect": {
+        "line_totals_cents": [2500, 999],
+        "subtotal_cents": 3499,
+        "discount_cents": 300,
+        "taxable_cents": 3199,
+        "tax_cents": 264,
+        "shipping_cents": 500,
+        "total_cents": 3963
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "discount cannot exceed subtotal",
+      "acceptance": "A1",
+      "call": "calculate_invoice",
+      "args": [
+        {
+          "items": [{"quantity": 1, "unit_price_cents": 100}],
+          "discount_cents": 999,
+          "tax_rate_bps": 0,
+          "shipping_cents": 0
+        }
+      ],
+      "expect": {
+        "line_totals_cents": [100],
+        "subtotal_cents": 100,
+        "discount_cents": 100,
+        "taxable_cents": 0,
+        "tax_cents": 0,
+        "shipping_cents": 0,
+        "total_cents": 0
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "half cent rounds upward",
+      "acceptance": "A1",
+      "call": "calculate_invoice",
+      "args": [
+        {
+          "items": [{"quantity": 1, "unit_price_cents": 1}],
+          "tax_rate_bps": 5000
+        }
+      ],
+      "expect": {
+        "line_totals_cents": [1],
+        "subtotal_cents": 1,
+        "discount_cents": 0,
+        "taxable_cents": 1,
+        "tax_cents": 1,
+        "shipping_cents": 0,
+        "total_cents": 2
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "empty invoice may still charge shipping",
+      "acceptance": "A2",
+      "call": "calculate_invoice",
+      "args": [
+        {"items": [], "shipping_cents": 250, "tax_rate_bps": 1000}
+      ],
+      "expect": {
+        "line_totals_cents": [],
+        "subtotal_cents": 0,
+        "discount_cents": 0,
+        "taxable_cents": 0,
+        "tax_cents": 0,
+        "shipping_cents": 250,
+        "total_cents": 250
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "missing optional values default to zero",
+      "acceptance": "A2",
+      "call": "calculate_invoice",
+      "args": [
+        {
+          "items": [
+            {"quantity": 3, "unit_price_cents": 200, "description": "Cable"}
+          ]
+        }
+      ],
+      "expect": {
+        "line_totals_cents": [600],
+        "subtotal_cents": 600,
+        "discount_cents": 0,
+        "taxable_cents": 600,
+        "tax_cents": 0,
+        "shipping_cents": 0,
+        "total_cents": 600
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "maximum tax rate remains integer",
+      "acceptance": "A1",
+      "call": "calculate_invoice",
+      "args": [
+        {
+          "items": [{"quantity": 2, "unit_price_cents": 333}],
+          "tax_rate_bps": 10000
+        }
+      ],
+      "expect": {
+        "line_totals_cents": [666],
+        "subtotal_cents": 666,
+        "discount_cents": 0,
+        "taxable_cents": 666,
+        "tax_cents": 666,
+        "shipping_cents": 0,
+        "total_cents": 1332
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject zero quantity",
+      "acceptance": "A3",
+      "call": "calculate_invoice",
+      "args": [{"items": [{"quantity": 0, "unit_price_cents": 10}]}],
+      "expect_error": "ValueError",
+      "error_message": "quantity must be a positive integer"
+    },
+    {
+      "name": "reject tax rate above one hundred percent",
+      "acceptance": "A3",
+      "call": "calculate_invoice",
+      "args": [{"items": [], "tax_rate_bps": 10001}],
+      "expect_error": "ValueError",
+      "error_message": "tax_rate_bps must be an integer from 0 to 10000"
+    },
+    {
+      "name": "reject negative shipping",
+      "acceptance": "A3",
+      "call": "calculate_invoice",
+      "args": [{"items": [], "shipping_cents": -1}],
+      "expect_error": "ValueError",
+      "error_message": "shipping_cents must be a non-negative integer"
+    }
+  ]
+}

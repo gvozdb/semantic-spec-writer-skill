@@ -1,0 +1,31 @@
+spec
+meta:
+  id: email-routing
+  title: deterministic customer email routing
+
+terms:
+  M: message object {sender, recipients, subject, body}
+  D: {queue, priority, normalized_sender, normalized_recipients}
+  K: billing|support|sales
+  precedence: billing > support > sales
+
+api:
+  route_email(M) -> D
+
+rules:
+  R1: norm(M.sender)=strip+lower; norm(each M.recipients)=strip+lower; keep recipient order/duplicates
+  R2: T=ASCII tokens [a-z0-9]+ from lower(M.subject + " " + M.body)
+  R3: sender domain after last @ in {spam.test,malware.test} -> queue=spam
+  R4: non-spam recipient local-part exact billing|support|sales -> queue=K by precedence
+  R5: if R4 absent, T∩{invoice,payment,refund,charge} -> billing; else T∩{help,issue,error,bug} -> support; else T∩{quote,demo,pricing} -> sales; else general
+  R6: recipient queue overrides content queue; spam overrides all
+  R7: queue=spam -> priority=low; else T∩{urgent,asap,outage} -> high; else normal
+  R8: output D with R1 values and queue/priority; input M unchanged
+
+acceptance:
+  A1: normalize sender/recipients without changing order or duplicates
+  A2: apply spam, recipient, content, category-precedence, and urgency rules exactly
+  A3: empty subject/body/recipients remain valid and default to general/normal when unmatched
+  A4: return only JSON-serializable D and preserve M
+
+open_questions: []

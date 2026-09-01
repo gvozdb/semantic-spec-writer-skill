@@ -1,0 +1,201 @@
+{
+  "tests": [
+    {
+      "name": "global and attribute targeting",
+      "acceptance": "A1",
+      "call": "evaluate_flags",
+      "args": [
+        {
+          "id": "u-100",
+          "country": "NL",
+          "plan": "pro"
+        },
+        [
+          {
+            "key": "dark_mode",
+            "enabled": true
+          },
+          {
+            "key": "nl_checkout",
+            "enabled": true,
+            "countries": ["NL"]
+          },
+          {
+            "key": "pro_checkout",
+            "enabled": true,
+            "plans": ["pro"]
+          },
+          {
+            "key": "us_only",
+            "enabled": true,
+            "countries": ["US"]
+          },
+          {
+            "key": "off",
+            "enabled": false
+          }
+        ]
+      ],
+      "expect": {
+        "dark_mode": true,
+        "nl_checkout": true,
+        "pro_checkout": true,
+        "us_only": false,
+        "off": false
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "allowlist and rollout boundaries",
+      "acceptance": "A1",
+      "call": "evaluate_flags",
+      "args": [
+        {
+          "id": "u-200",
+          "country": "US",
+          "plan": "free"
+        },
+        [
+          {
+            "key": "staff_console",
+            "enabled": true,
+            "allow_users": ["u-200"]
+          },
+          {
+            "key": "search_v2",
+            "enabled": true,
+            "rollout": 40
+          },
+          {
+            "key": "dark_mode",
+            "enabled": true,
+            "rollout": 35
+          },
+          {
+            "key": "zero_percent",
+            "enabled": true,
+            "rollout": 0
+          },
+          {
+            "key": "full_percent",
+            "enabled": true,
+            "rollout": 100
+          },
+          {
+            "key": "empty_group",
+            "enabled": true,
+            "allow_users": []
+          }
+        ]
+      ],
+      "expect": {
+        "staff_console": true,
+        "search_v2": true,
+        "dark_mode": false,
+        "zero_percent": false,
+        "full_percent": true,
+        "empty_group": false
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "dependencies missing attributes and cycles",
+      "acceptance": "A2",
+      "call": "evaluate_flags",
+      "args": [
+        {
+          "id": "u-303"
+        },
+        [
+          {
+            "key": "core",
+            "enabled": true
+          },
+          {
+            "key": "child",
+            "enabled": true,
+            "depends_on": "core"
+          },
+          {
+            "key": "off",
+            "enabled": false
+          },
+          {
+            "key": "blocked",
+            "enabled": true,
+            "depends_on": "off"
+          },
+          {
+            "key": "missing",
+            "enabled": true,
+            "depends_on": "does_not_exist"
+          },
+          {
+            "key": "country_gate",
+            "enabled": true,
+            "countries": ["NL"]
+          },
+          {
+            "key": "cycle_a",
+            "enabled": true,
+            "depends_on": "cycle_b"
+          },
+          {
+            "key": "cycle_b",
+            "enabled": true,
+            "depends_on": "cycle_a"
+          }
+        ]
+      ],
+      "expect": {
+        "core": true,
+        "child": true,
+        "off": false,
+        "blocked": false,
+        "missing": false,
+        "country_gate": false,
+        "cycle_a": false,
+        "cycle_b": false
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "all targeting gates must match",
+      "acceptance": "A1",
+      "call": "evaluate_flags",
+      "args": [
+        {
+          "id": "u-404",
+          "country": "NL",
+          "plan": "free"
+        },
+        [
+          {
+            "key": "targeted",
+            "enabled": true,
+            "allow_users": ["u-404"],
+            "countries": ["NL"],
+            "plans": ["free"]
+          },
+          {
+            "key": "wrong_plan",
+            "enabled": true,
+            "countries": ["NL"],
+            "plans": ["pro"]
+          },
+          {
+            "key": "wrong_user",
+            "enabled": true,
+            "allow_users": ["u-405"]
+          }
+        ]
+      ],
+      "expect": {
+        "targeted": true,
+        "wrong_plan": false,
+        "wrong_user": false
+      },
+      "preserve_inputs": true
+    }
+  ]
+}

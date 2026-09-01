@@ -1,0 +1,5 @@
+{
+  "id": "order-transitions",
+  "title": "Order lifecycle event transitions",
+  "entrypoint": "solution.py"
+}

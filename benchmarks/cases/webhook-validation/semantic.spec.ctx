@@ -1,0 +1,34 @@
+spec
+meta:
+  file: webhook-validation.spec.ctx
+  title: Timestamped HMAC webhook validation
+  status: benchmark
+
+terms:
+  P: JSON payload
+  B: json.dumps(P,ensure_ascii=false,sort_keys=true,separators=(',',':')).UTF8
+  M(t): ASCII(t)+"."+B
+  H: hex_lower(HMAC-SHA256(UTF8(secret),M(t)))
+
+goal:
+  G1: return exactly {valid:boolean,reason:ok|malformed|expired|mismatch} without mutating inputs
+
+rules:
+  R1: header is comma-separated key=value; trim component/key/value; exactly one t and >=1 v1; no '='-less component; duplicate t -> malformed
+  R2: t is non-empty ASCII digits; every v1 is exactly 64 lowercase hex; other well-formed keys ignored
+  R3: nonempty string secret, string header, int-not-bool now/tolerance, tolerance>=0; otherwise malformed
+  R4: abs(now-int(t))>tolerance -> {valid:false,reason:expired}
+  R5: current well-formed header -> compare H to every v1 with constant-time comparison; any match -> {valid:true,reason:ok}, else mismatch
+  R6: canonical body/message/H follow terms exactly; use no clock/randomness/network
+
+acceptance:
+  A1:
+    given: a current well-formed signed header
+    when: validate_webhook is called
+    then: accept if any v1 matches the exact HMAC
+  A2:
+    given: malformed, stale, or nonmatching input
+    when: validate_webhook is called
+    then: return the reason required by R1-R5
+
+open_questions: []

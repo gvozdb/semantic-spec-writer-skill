@@ -1,0 +1,160 @@
+{
+  "tests": [
+    {
+      "name": "successful reservation trims request values",
+      "acceptance": "A1",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 5, "B": 2, "C": 0},
+        {
+          "reservation_id": " r-1 ",
+          "items": [
+            {"sku": " A ", "quantity": 2},
+            {"sku": "B", "quantity": 2}
+          ]
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "reservation_id": "r-1",
+        "inventory": {"A": 3, "B": 0, "C": 0},
+        "reserved": [
+          {"sku": "A", "quantity": 2},
+          {"sku": "B", "quantity": 2}
+        ]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "duplicate SKU quantities aggregate in first-seen order",
+      "acceptance": "A1",
+      "call": "reserve_inventory",
+      "args": [
+        {"sku-1": 5, "sku-2": 3},
+        {
+          "reservation_id": "r-2",
+          "items": [
+            {"sku": "sku-1", "quantity": 2},
+            {"sku": " sku-1 ", "quantity": 1},
+            {"sku": "sku-2", "quantity": 3}
+          ]
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "reservation_id": "r-2",
+        "inventory": {"sku-1": 2, "sku-2": 0},
+        "reserved": [
+          {"sku": "sku-1", "quantity": 3},
+          {"sku": "sku-2", "quantity": 3}
+        ]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "missing and insufficient SKUs fail atomically",
+      "acceptance": "A2",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 2, "B": 1},
+        {
+          "reservation_id": " r-3 ",
+          "items": [
+            {"sku": "A", "quantity": 2},
+            {"sku": "C", "quantity": 1},
+            {"sku": "B", "quantity": 2}
+          ]
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reservation_id": "r-3",
+        "inventory": {"A": 2, "B": 1},
+        "shortages": [
+          {"sku": "C", "requested": 1, "available": 0},
+          {"sku": "B", "requested": 2, "available": 1}
+        ]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "duplicate shortage reports aggregate request",
+      "acceptance": "A2",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 3},
+        {
+          "reservation_id": "r-4",
+          "items": [
+            {"sku": "A", "quantity": 2},
+            {"sku": "A", "quantity": 2}
+          ]
+        }
+      ],
+      "expect": {
+        "ok": false,
+        "reservation_id": "r-4",
+        "inventory": {"A": 3},
+        "shortages": [{"sku": "A", "requested": 4, "available": 3}]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "empty request is a successful no-op",
+      "acceptance": "A3",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 4, "B": 0},
+        {"reservation_id": "r-5", "items": []}
+      ],
+      "expect": {
+        "ok": true,
+        "reservation_id": "r-5",
+        "inventory": {"A": 4, "B": 0},
+        "reserved": []
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "SKU matching is case-sensitive",
+      "acceptance": "A1",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 2, "a": 5},
+        {
+          "reservation_id": "r-6",
+          "items": [{"sku": "a", "quantity": 4}]
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "reservation_id": "r-6",
+        "inventory": {"A": 2, "a": 1},
+        "reserved": [{"sku": "a", "quantity": 4}]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject non-positive quantity",
+      "acceptance": "A3",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 2},
+        {"reservation_id": "r-7", "items": [{"sku": "A", "quantity": 0}]}
+      ],
+      "expect_error": "ValueError",
+      "error_message": "quantity must be a positive integer"
+    },
+    {
+      "name": "reject blank reservation id",
+      "acceptance": "A3",
+      "call": "reserve_inventory",
+      "args": [
+        {"A": 2},
+        {"reservation_id": "   ", "items": []}
+      ],
+      "expect_error": "ValueError",
+      "error_message": "reservation_id must be a non-empty string"
+    }
+  ]
+}

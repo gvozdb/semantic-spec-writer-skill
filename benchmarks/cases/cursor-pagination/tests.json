@@ -1,0 +1,152 @@
+{
+  "tests": [
+    {
+      "name": "first page emits canonical offset cursor",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [
+        [
+          {"id": "a", "value": "A"},
+          {"id": "b", "value": "B"},
+          {"id": "c", "value": "C"},
+          {"id": "d", "value": "D"},
+          {"id": "e", "value": "E"}
+        ],
+        2
+      ],
+      "expect": {
+        "items": [
+          {"id": "a", "value": "A"},
+          {"id": "b", "value": "B"}
+        ],
+        "next_cursor": "eyJvZmZzZXQiOjJ9"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "middle page advances by returned item count",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [
+        [
+          {"id": "a", "value": "A"},
+          {"id": "b", "value": "B"},
+          {"id": "c", "value": "C"},
+          {"id": "d", "value": "D"},
+          {"id": "e", "value": "E"}
+        ],
+        2,
+        "eyJvZmZzZXQiOjJ9"
+      ],
+      "expect": {
+        "items": [
+          {"id": "c", "value": "C"},
+          {"id": "d", "value": "D"}
+        ],
+        "next_cursor": "eyJvZmZzZXQiOjR9"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "short final page has no next cursor",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [
+        [
+          {"id": "a", "value": "A"},
+          {"id": "b", "value": "B"},
+          {"id": "c", "value": "C"},
+          {"id": "d", "value": "D"},
+          {"id": "e", "value": "E"}
+        ],
+        2,
+        "eyJvZmZzZXQiOjR9"
+      ],
+      "expect": {
+        "items": [
+          {"id": "e", "value": "E"}
+        ],
+        "next_cursor": null
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "empty final offset is valid",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [
+        [
+          {"id": "a"},
+          {"id": "b"},
+          {"id": "c"},
+          {"id": "d"},
+          {"id": "e"}
+        ],
+        3,
+        "eyJvZmZzZXQiOjV9"
+      ],
+      "expect": {
+        "items": [],
+        "next_cursor": null
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "empty input is an empty final page",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [[], 100],
+      "expect": {
+        "items": [],
+        "next_cursor": null
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "maximum limit returns all available records",
+      "acceptance": "A1",
+      "call": "paginate",
+      "args": [
+        [
+          {"id": "a"},
+          {"id": "b"},
+          {"id": "c"}
+        ],
+        100
+      ],
+      "expect": {
+        "items": [
+          {"id": "a"},
+          {"id": "b"},
+          {"id": "c"}
+        ],
+        "next_cursor": null
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "zero limit is rejected",
+      "acceptance": "A2",
+      "call": "paginate",
+      "args": [[], 0],
+      "expect_error": "ValueError",
+      "error_message": "limit must be an integer from 1 to 100"
+    },
+    {
+      "name": "malformed cursor is rejected",
+      "acceptance": "A2",
+      "call": "paginate",
+      "args": [[], 1, "not-a-cursor"],
+      "expect_error": "ValueError",
+      "error_message": "invalid cursor"
+    },
+    {
+      "name": "cursor beyond records is rejected",
+      "acceptance": "A2",
+      "call": "paginate",
+      "args": [[{"id": "a"}], 1, "eyJvZmZzZXQiOjEwfQ"],
+      "expect_error": "ValueError",
+      "error_message": "cursor offset is past the end of records"
+    }
+  ]
+}

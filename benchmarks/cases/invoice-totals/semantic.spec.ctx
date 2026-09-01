@@ -1,0 +1,29 @@
+spec
+meta:
+  id: invoice-totals
+  title: integer-cent invoice totals
+
+terms:
+  I: invoice {items, discount_cents?, shipping_cents?, tax_rate_bps?}
+  L: item {quantity>0 integer, unit_price_cents>=0 integer}
+  bps: basis points; 100 bps=1%
+  round_half_up(x): integer cents, exact half rounds upward
+
+api:
+  calculate_invoice(I) -> JSON object
+
+rules:
+  R1: I.items must be list; each L.quantity positive int; each L.unit_price_cents non-negative int; bool is not int
+  R2: absent discount_cents/shipping_cents/tax_rate_bps => 0; discount/shipping non-negative int; tax_rate_bps in [0,10000]
+  R3: line_totals=[L.quantity*L.unit_price_cents] in input order; subtotal=sum(line_totals)
+  R4: discount=min(discount_cents,subtotal); taxable=subtotal-discount; tax=round_half_up(taxable*tax_rate_bps/10000); tax excludes shipping
+  R5: total=taxable+tax+shipping
+  R6: output exactly {line_totals_cents,subtotal_cents,discount_cents,taxable_cents,tax_cents,shipping_cents,total_cents}; all ints; empty items valid
+  R7: preserve I and nested items; errors: items must be a list | quantity must be a positive integer | unit_price_cents must be a non-negative integer | discount_cents must be a non-negative integer | shipping_cents must be a non-negative integer | tax_rate_bps must be an integer from 0 to 10000
+
+acceptance:
+  A1: calculate integer-cent lines, capped discount, half-up tax, and total without floating point
+  A2: default absent optional values to zero and exclude shipping from tax base
+  A3: return exact JSON shape, validate booleans as non-integers, and preserve input
+
+open_questions: []

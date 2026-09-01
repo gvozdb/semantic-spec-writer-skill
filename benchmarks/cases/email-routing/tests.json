@@ -1,0 +1,164 @@
+{
+  "tests": [
+    {
+      "name": "recipient support and urgent content",
+      "acceptance": "A1",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": " Alice@Example.COM ",
+          "recipients": [" Support@Acme.test "],
+          "subject": "Login error ASAP",
+          "body": "Please help me sign in."
+        }
+      ],
+      "expect": {
+        "queue": "support",
+        "priority": "high",
+        "normalized_sender": "alice@example.com",
+        "normalized_recipients": ["support@acme.test"]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "billing keywords have category precedence",
+      "acceptance": "A2",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "bob@customer.test",
+          "recipients": ["general@acme.test"],
+          "subject": "Refund for an invoice",
+          "body": "The payment was charged twice."
+        }
+      ],
+      "expect": {
+        "queue": "billing",
+        "priority": "normal",
+        "normalized_sender": "bob@customer.test",
+        "normalized_recipients": ["general@acme.test"]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "sales recipient without urgency",
+      "acceptance": "A2",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "lead@prospect.test",
+          "recipients": ["sales@acme.test"],
+          "subject": "Hello",
+          "body": "I would like to learn more."
+        }
+      ],
+      "expect": {
+        "queue": "sales",
+        "priority": "normal",
+        "normalized_sender": "lead@prospect.test",
+        "normalized_recipients": ["sales@acme.test"]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "blocked sender overrides support and urgency",
+      "acceptance": "A2",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "robot@SPAM.TEST ",
+          "recipients": ["support@acme.test"],
+          "subject": "URGENT outage",
+          "body": "Please help immediately."
+        }
+      ],
+      "expect": {
+        "queue": "spam",
+        "priority": "low",
+        "normalized_sender": "robot@spam.test",
+        "normalized_recipients": ["support@acme.test"]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "billing recipient wins over support recipient and content",
+      "acceptance": "A2",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "customer@example.org",
+          "recipients": ["support@acme.test", " billing@acme.test "],
+          "subject": "I need help with a bug",
+          "body": "The issue is visible after payment."
+        }
+      ],
+      "expect": {
+        "queue": "billing",
+        "priority": "normal",
+        "normalized_sender": "customer@example.org",
+        "normalized_recipients": ["support@acme.test", "billing@acme.test"]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "substring is not a keyword token",
+      "acceptance": "A4",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "person@example.org",
+          "recipients": [],
+          "subject": "Supportive update",
+          "body": "Everything is working."
+        }
+      ],
+      "expect": {
+        "queue": "general",
+        "priority": "normal",
+        "normalized_sender": "person@example.org",
+        "normalized_recipients": []
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "empty message fields use normal general routing",
+      "acceptance": "A3",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "  PERSON@Example.com",
+          "recipients": [],
+          "subject": "",
+          "body": ""
+        }
+      ],
+      "expect": {
+        "queue": "general",
+        "priority": "normal",
+        "normalized_sender": "person@example.com",
+        "normalized_recipients": []
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "sales recipient preserves duplicate order and detects urgency",
+      "acceptance": "A1",
+      "call": "route_email",
+      "args": [
+        {
+          "sender": "lead@prospect.test",
+          "recipients": ["Sales@acme.test", " sales@acme.test "],
+          "subject": "Could you send a quote?",
+          "body": "ASAP, please."
+        }
+      ],
+      "expect": {
+        "queue": "sales",
+        "priority": "high",
+        "normalized_sender": "lead@prospect.test",
+        "normalized_recipients": ["sales@acme.test", "sales@acme.test"]
+      },
+      "preserve_inputs": true
+    }
+  ]
+}

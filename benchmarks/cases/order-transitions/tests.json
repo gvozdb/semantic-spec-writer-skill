@@ -1,0 +1,169 @@
+{
+  "tests": [
+    {
+      "name": "pay pending order and trim payment id",
+      "acceptance": "A3",
+      "call": "apply_order_event",
+      "args": [
+        {
+          "id": "o-1",
+          "status": "pending",
+          "items": [{"sku": "A", "quantity": 1}],
+          "customer": {"id": "c-1"}
+        },
+        {"type": "pay", "payment_id": " pay-42 "}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {
+          "id": "o-1",
+          "status": "paid",
+          "items": [{"sku": "A", "quantity": 1}],
+          "customer": {"id": "c-1"},
+          "payment_id": "pay-42"
+        }
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "pack paid order",
+      "acceptance": "A1",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-2", "status": "paid", "notes": ["gift"]},
+        {"type": "pack", "warehouse": "west"}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {"id": "o-2", "status": "packed", "notes": ["gift"]}
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "ship packed order and trim tracking number",
+      "acceptance": "A1",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-3", "status": "packed", "address": {"country": "NL"}},
+        {"type": "ship", "tracking_number": " TRACK-9 "}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {
+          "id": "o-3",
+          "status": "shipped",
+          "address": {"country": "NL"},
+          "tracking_number": "TRACK-9"
+        }
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "deliver shipped order",
+      "acceptance": "A1",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-4", "status": "shipped", "tracking_number": "TRACK-4"},
+        {"type": "deliver"}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {"id": "o-4", "status": "delivered", "tracking_number": "TRACK-4"}
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "cancel pending order",
+      "acceptance": "A1",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-5", "status": "pending", "metadata": {"source": "web"}},
+        {"type": "cancel"}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {"id": "o-5", "status": "cancelled", "metadata": {"source": "web"}}
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "refund packed order",
+      "acceptance": "A1",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-6", "status": "packed", "payment_id": "pay-6"},
+        {"type": "refund"}
+      ],
+      "expect": {
+        "ok": true,
+        "order": {"id": "o-6", "status": "refunded", "payment_id": "pay-6"}
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject deliver from paid",
+      "acceptance": "A2",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-7", "status": "paid"},
+        {"type": "deliver"}
+      ],
+      "expect": {
+        "ok": false,
+        "error": "invalid_transition",
+        "status": "paid",
+        "event": "deliver"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "require payment id on allowed pay",
+      "acceptance": "A2",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-8", "status": "pending"},
+        {"type": "pay", "payment_id": "   "}
+      ],
+      "expect": {"ok": false, "error": "missing_payment_id"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "require tracking number on allowed ship",
+      "acceptance": "A2",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-9", "status": "packed"},
+        {"type": "ship", "tracking_number": ""}
+      ],
+      "expect": {"ok": false, "error": "missing_tracking_number"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "unknown event is distinct from invalid transition",
+      "acceptance": "A2",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-10", "status": "pending"},
+        {"type": "archive"}
+      ],
+      "expect": {"ok": false, "error": "unknown_event", "event": "archive"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "terminal order has no outgoing transitions",
+      "acceptance": "A2",
+      "call": "apply_order_event",
+      "args": [
+        {"id": "o-11", "status": "delivered"},
+        {"type": "refund"}
+      ],
+      "expect": {
+        "ok": false,
+        "error": "invalid_transition",
+        "status": "delivered",
+        "event": "refund"
+      },
+      "preserve_inputs": true
+    }
+  ]
+}

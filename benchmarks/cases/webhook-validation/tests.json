@@ -1,0 +1,185 @@
+{
+  "tests": [
+    {
+      "name": "valid canonical payload",
+      "acceptance": "A1",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1",
+          "amount": 3,
+          "ok": true
+        },
+        "t=1700000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652877",
+        "whsec_test",
+        1700000120
+      ],
+      "expect": {
+        "valid": true,
+        "reason": "ok"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "unicode and reordered keys are canonicalized",
+      "acceptance": "A1",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "message": "café",
+          "id": "evt_2",
+          "nested": {
+            "z": 1,
+            "a": 2
+          }
+        },
+        "t=1700000000,v1=c26be464feb89acdddadc92468067caf4d39e392b94e34c3264cb82482ef282d",
+        "whsec_test",
+        1700000300
+      ],
+      "expect": {
+        "valid": true,
+        "reason": "ok"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "timestamp tolerance is strict after the boundary",
+      "acceptance": "A2",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1",
+          "amount": 3,
+          "ok": true
+        },
+        "t=1700000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652877",
+        "whsec_test",
+        1700000301
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "expired"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "wrong secret produces a mismatch",
+      "acceptance": "A2",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1",
+          "amount": 3,
+          "ok": true
+        },
+        "t=1700000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652877",
+        "other_secret",
+        1700000120
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "mismatch"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "well-formed but altered digest mismatches",
+      "acceptance": "A2",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1",
+          "amount": 3,
+          "ok": true
+        },
+        "t=1700000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652878",
+        "whsec_test",
+        1700000120
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "mismatch"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "any matching rotated signature is accepted",
+      "acceptance": "A1",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1",
+          "amount": 3,
+          "ok": true
+        },
+        "t=1700000000,v0=legacy,v1=0000000000000000000000000000000000000000000000000000000000000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652877",
+        "whsec_test",
+        1700000120
+      ],
+      "expect": {
+        "valid": true,
+        "reason": "ok"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "invalid digest syntax is malformed",
+      "acceptance": "A2",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1"
+        },
+        "t=1700000000,v1=not-hex",
+        "whsec_test",
+        1700000120
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "malformed"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "duplicate timestamp is malformed",
+      "acceptance": "A2",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_1"
+        },
+        "t=1700000000,t=1700000000,v1=4a58f7c1149fa75685103e8edc30d5a38595e79a3595c070170ef1c8ae652877",
+        "whsec_test",
+        1700000120
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "malformed"
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "zero tolerance accepts only exact timestamp",
+      "acceptance": "A1",
+      "call": "validate_webhook",
+      "args": [
+        {
+          "id": "evt_3",
+          "items": ["α", 2]
+        },
+        "t=1700000123,v1=67d4d1e5d941cb383c4b474e4feb0d6f2c2fb27efd3e8873055e330953fe4a6d",
+        "secret-2",
+        1700000123
+      ],
+      "kwargs": {
+        "tolerance": 0
+      },
+      "expect": {
+        "valid": true,
+        "reason": "ok"
+      },
+      "preserve_inputs": true
+    }
+  ]
+}

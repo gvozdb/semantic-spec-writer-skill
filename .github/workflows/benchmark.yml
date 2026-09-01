@@ -1,0 +1,29 @@
+name: Benchmark fixtures
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate benchmark fixtures
+        run: python3 benchmarks/benchmark.py validate
+
+      - name: Check semantic documents are smaller
+        run: python3 benchmarks/benchmark.py static --check
+
+      - name: Run benchmark harness tests
+        run: python3 -m unittest discover -s benchmarks/tests -v

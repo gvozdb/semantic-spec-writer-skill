@@ -1,0 +1,5 @@
+{
+  "id": "webhook-validation",
+  "title": "Timestamped HMAC webhook validation",
+  "entrypoint": "solution.py"
+}

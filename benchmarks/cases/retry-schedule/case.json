@@ -1,0 +1,5 @@
+{
+  "id": "retry-schedule",
+  "title": "Deterministic capped retry scheduling",
+  "entrypoint": "solution.py"
+}

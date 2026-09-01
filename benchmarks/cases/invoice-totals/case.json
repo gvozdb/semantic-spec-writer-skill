@@ -1,0 +1,5 @@
+{
+  "id": "invoice-totals",
+  "title": "Integer-cent invoice totals",
+  "entrypoint": "solution.py"
+}

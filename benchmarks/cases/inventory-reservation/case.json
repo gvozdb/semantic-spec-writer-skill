@@ -1,0 +1,5 @@
+{
+  "id": "inventory-reservation",
+  "title": "Atomic inventory reservation",
+  "entrypoint": "solution.py"
+}

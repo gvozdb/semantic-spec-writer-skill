@@ -1,0 +1,5 @@
+{
+  "id": "email-routing",
+  "title": "Deterministic customer email routing",
+  "entrypoint": "solution.py"
+}

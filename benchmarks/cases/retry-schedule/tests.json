@@ -1,0 +1,71 @@
+{
+  "tests": [
+    {
+      "name": "exponential delays are capped",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [5, 3, 20],
+      "expect": [3, 6, 12, 20, 20],
+      "preserve_inputs": true
+    },
+    {
+      "name": "server lower bound applies before cap",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [5, 2, 10],
+      "kwargs": {
+        "retry_after": 5
+      },
+      "expect": [5, 5, 8, 10, 10],
+      "preserve_inputs": true
+    },
+    {
+      "name": "zero attempts produce an empty schedule",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [0, 99, 1],
+      "expect": [],
+      "preserve_inputs": true
+    },
+    {
+      "name": "cap below the base delay still wins",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [3, 10, 6],
+      "expect": [6, 6, 6],
+      "preserve_inputs": true
+    },
+    {
+      "name": "lower bound above cap is capped",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [4, 1, 4, 9],
+      "expect": [4, 4, 4, 4],
+      "preserve_inputs": true
+    },
+    {
+      "name": "zero base delay stays zero without a lower bound",
+      "acceptance": "A1",
+      "call": "build_retry_schedule",
+      "args": [3, 0, 7, null],
+      "expect": [0, 0, 0],
+      "preserve_inputs": true
+    },
+    {
+      "name": "negative max delay is rejected",
+      "acceptance": "A2",
+      "call": "build_retry_schedule",
+      "args": [3, 1, -1],
+      "expect_error": "ValueError",
+      "error_message": "max_delay must be non-negative"
+    },
+    {
+      "name": "boolean attempts is not an integer",
+      "acceptance": "A2",
+      "call": "build_retry_schedule",
+      "args": [true, 1, 4],
+      "expect_error": "TypeError",
+      "error_message": "attempts must be an integer"
+    }
+  ]
+}

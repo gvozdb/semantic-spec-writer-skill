@@ -1,0 +1,5 @@
+{
+  "id": "cursor-pagination",
+  "title": "Canonical opaque cursor pagination",
+  "entrypoint": "solution.py"
+}

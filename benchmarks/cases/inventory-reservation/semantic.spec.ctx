@@ -1,0 +1,28 @@
+spec
+meta:
+  id: inventory-reservation
+  title: atomic inventory reservation
+
+terms:
+  I: SKU->stock map; canonical SKU keys are case-sensitive; stock is non-negative int
+  Q: {reservation_id, items:[{sku,quantity}]}
+  U: trim whitespace; SKU case remains sensitive
+
+api:
+  reserve_inventory(I,Q) -> success|failure
+
+rules:
+  R1: validate I object and all stock values non-negative int; bool is not int
+  R2: Q.reservation_id non-empty string; output U(id); Q.items list; item object; U(item.sku) non-empty; quantity positive int
+  R3: aggregate quantities by distinct U(sku), preserving first-seen SKU order
+  R4: available(sku)=I[sku] or 0; success iff every aggregate <= available
+  R5: success -> {ok:true,reservation_id:U(id),inventory=copy(I) with aggregates subtracted,reserved=[{sku,quantity} in first-seen order]}
+  R6: failure -> {ok:false,reservation_id:U(id),inventory=copy(I),shortages=[{sku,requested,available} for insufficient SKUs in first-seen order]}; no partial decrement/no reserved
+  R7: empty items -> successful no-op; preserve I,Q; errors: inventory must be an object | inventory quantities must be non-negative integers | reservation_id must be a non-empty string | items must be a list | each item must be an object | sku must be a non-empty string | quantity must be a positive integer
+
+acceptance:
+  A1: trim IDs/SKUs, aggregate duplicates, retain first-seen output order and case sensitivity
+  A2: make success all-or-nothing and report every shortage without mutation
+  A3: preserve all inventory keys, return exact JSON shapes, and reject invalid inputs/messages
+
+open_questions: []
