@@ -1,0 +1,22 @@
+spec
+target: solution.py :: implement evaluate_flags(user, flags)
+
+contract:
+  user: object {id: string, country?: value, plan?: value}
+  flags: ordered list of objects; each has unique string key and enabled boolean; optional allow_users, countries, plans, rollout (integer percent), depends_on (flag key)
+  return: dictionary {flag key: boolean}, inserted in input-list order; consumers treat it as a mapping
+  preserve: do not modify user, flags, or nested lists
+
+rules:
+  R1: flag is off unless enabled is exactly true
+  R2: each present targeting list is a required gate: allow_users contains user["id"], countries contains user["country"], plans contains user["plan"]
+  R3: all present gates must match; empty list matches nobody; missing user attribute does not match; evaluate gates before rollout
+  R4: depends_on present -> referenced flag must resolve true for the same user; missing dependency -> false
+  R5: every flag in a dependency cycle -> false; any flag depending on that cycle -> false
+  R6: omitted rollout = 100; 0 -> false; 100 -> true after R2-R5
+  R7: 0<rollout<100 -> bucket = int(SHA-256(UTF-8 "<user id>:<flag key>").first_8_hex, 16) % 100; on iff bucket < rollout
+  R8: use no random numbers, time, or network state; identical inputs produce identical mappings
+
+acceptance:
+  A1: R1,R2,R3,R6,R7,R8
+  A2: R4,R5

@@ -39,9 +39,9 @@ passes deterministic tests.
   implementation quality is preserved.
 
 The benchmark does not claim that one small fixture set represents every
-codebase, model, or specification style. It measures reuse of an already
-created semantic specification and does not include the one-time conversion
-cost.
+codebase, model, or specification style. Context and implementation reports
+measure reuse of an already created semantic specification. The lifecycle
+report adds the complete recorded one-time conversion cost.
 
 ## Requirements
 

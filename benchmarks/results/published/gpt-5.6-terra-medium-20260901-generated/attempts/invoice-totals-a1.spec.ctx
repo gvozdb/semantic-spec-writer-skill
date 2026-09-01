@@ -1,0 +1,25 @@
+spec
+target: solution.py :: calculate_invoice(invoice)
+input: JSON object; invoice["items"] is a list of line-item objects
+output: exactly one JSON object of integers: [line_totals_cents,subtotal_cents,discount_cents,taxable_cents,tax_cents,shipping_cents,total_cents]
+keep: do not modify invoice/items; input order; other item fields do not affect calculation
+
+rules:
+  R1: quantity is a positive integer; unit_price_cents is non-negative; discount_cents/shipping_cents default to 0 and are non-negative; tax_rate_bps defaults to 0 and is in [0,10000]; bool is never an integer
+  R2: line_totals_cents = [item["quantity"] * item["unit_price_cents"] in input order]; subtotal_cents = sum(line_totals_cents)
+  R3: discount_cents = min(input discount_cents, subtotal_cents); taxable_cents = subtotal_cents - discount_cents
+  R4: tax_cents = taxable_cents * tax_rate_bps / 10000, half-cent upward; exclude shipping; use integer cents/no binary floating point
+  R5: total_cents = taxable_cents + tax_cents + shipping_cents; empty items is valid, including with shipping
+
+errors:
+  items: not a list | ValueError "items must be a list"
+  quantity: not a positive integer | ValueError "quantity must be a positive integer"
+  unit_price_cents: not a non-negative integer | ValueError "unit_price_cents must be a non-negative integer"
+  discount_cents: not a non-negative integer | ValueError "discount_cents must be a non-negative integer"
+  shipping_cents: not a non-negative integer | ValueError "shipping_cents must be a non-negative integer"
+  tax_rate_bps: not an integer in [0,10000] | ValueError "tax_rate_bps must be an integer from 0 to 10000"
+
+acceptance:
+  A1: R2,R3,R4,R5
+  A2: output,keep,R2,R3,R4,R5
+  A3: keep

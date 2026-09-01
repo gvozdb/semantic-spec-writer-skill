@@ -1,0 +1,906 @@
+{
+  "cases": [
+    "cursor-pagination",
+    "email-routing",
+    "feature-flags",
+    "inventory-reservation",
+    "invoice-totals",
+    "order-transitions",
+    "retry-schedule",
+    "webhook-validation"
+  ],
+  "created_at": "2026-09-01T18:40:36.753182+00:00",
+  "environment": {
+    "codex": "codex-cli 0.149.1",
+    "git_commit": "dda8fc175fde89a207b80ebf6b125160779d8f03",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "kind": "semantic-spec-generation",
+  "max_attempts": 2,
+  "model": "gpt-5.6-terra",
+  "provider": "codex",
+  "reasoning_effort": "medium",
+  "results": [
+    {
+      "artifact": "specs/cursor-pagination.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/cursor-pagination-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1265,
+              "tokens": 300,
+              "words": 158
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 1923,
+              "tokens": 420,
+              "words": 309
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "f97589898985c1589ac15d79887afc1969129018ff9b26f1f5413fd4504a9e53"
+          },
+          "provider": {
+            "duration_seconds": 42.457,
+            "event_errors": [],
+            "final_message": "Created [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/cursor-pagination-attempt-1/result.spec.ctx). Conversion check passed with `--encoding o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e45-f0ce-7a51-93e6-104ad6783d63",
+            "tool_call_total": 5,
+            "tool_calls": {
+              "command_execution": 4,
+              "file_change": 1
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 81408,
+              "input_tokens": 99690,
+              "output_tokens": 1597,
+              "reasoning_output_tokens": 663,
+              "uncached_input_tokens": 18282
+            }
+          },
+          "semantic": {
+            "bytes": 1265,
+            "characters": 1265,
+            "lines": 26,
+            "words": 158
+          }
+        }
+      ],
+      "case": "cursor-pagination",
+      "compression": {
+        "bytes_percent": 34.22,
+        "words_percent": 48.87
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "5416224296ef6ad8c1d65df6797b16c06f062dd25a71dfde55add6833d510fe3",
+        "spec_sha256": "f97589898985c1589ac15d79887afc1969129018ff9b26f1f5413fd4504a9e53"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 42.457,
+        "event_errors": [],
+        "final_message": "Created [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/cursor-pagination-attempt-1/result.spec.ctx). Conversion check passed with `--encoding o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e45-f0ce-7a51-93e6-104ad6783d63",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 81408,
+          "input_tokens": 99690,
+          "output_tokens": 1597,
+          "reasoning_output_tokens": 663,
+          "uncached_input_tokens": 18282
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1265,
+        "characters": 1265,
+        "lines": 26,
+        "words": 158
+      },
+      "source": {
+        "bytes": 1923,
+        "characters": 1923,
+        "lines": 13,
+        "words": 309
+      }
+    },
+    {
+      "artifact": "specs/email-routing.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/email-routing-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1405,
+              "tokens": 333,
+              "words": 177
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 2021,
+              "tokens": 485,
+              "words": 301
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "b9de2c6b2e03f3ce9106529a580e7723495d07da7aad40457b49ed048915b3e5"
+          },
+          "provider": {
+            "duration_seconds": 43.797,
+            "event_errors": [],
+            "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/email-routing-attempt-1/result.spec.ctx) written and conversion check passed with `--encoding o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e46-9841-78a0-ac8f-d109a398abae",
+            "tool_call_total": 6,
+            "tool_calls": {
+              "command_execution": 5,
+              "file_change": 1
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 104704,
+              "input_tokens": 115599,
+              "output_tokens": 1587,
+              "reasoning_output_tokens": 507,
+              "uncached_input_tokens": 10895
+            }
+          },
+          "semantic": {
+            "bytes": 1405,
+            "characters": 1405,
+            "lines": 25,
+            "words": 177
+          }
+        }
+      ],
+      "case": "email-routing",
+      "compression": {
+        "bytes_percent": 30.48,
+        "words_percent": 41.2
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "68167c8c1cf1e9a88bb4ce5be6427bf73d1d66132e8b6787bf8f9f0acb2e3113",
+        "spec_sha256": "b9de2c6b2e03f3ce9106529a580e7723495d07da7aad40457b49ed048915b3e5"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 43.797,
+        "event_errors": [],
+        "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/email-routing-attempt-1/result.spec.ctx) written and conversion check passed with `--encoding o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e46-9841-78a0-ac8f-d109a398abae",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 104704,
+          "input_tokens": 115599,
+          "output_tokens": 1587,
+          "reasoning_output_tokens": 507,
+          "uncached_input_tokens": 10895
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1405,
+        "characters": 1405,
+        "lines": 25,
+        "words": 177
+      },
+      "source": {
+        "bytes": 2021,
+        "characters": 2021,
+        "lines": 37,
+        "words": 301
+      }
+    },
+    {
+      "artifact": "specs/feature-flags.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/feature-flags-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1339,
+              "tokens": 349,
+              "words": 194
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 2129,
+              "tokens": 486,
+              "words": 349
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "e2822daf3d745b88f15d1949bd265e16d6cf0e57bb08b9f05fb77f37dee7853f"
+          },
+          "provider": {
+            "duration_seconds": 36.072,
+            "event_errors": [],
+            "final_message": "Written [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/feature-flags-attempt-1/result.spec.ctx). Conversion check passed with `--encoding o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e47-44e1-7e53-9f07-0368e64d83ed",
+            "tool_call_total": 5,
+            "tool_calls": {
+              "command_execution": 4,
+              "file_change": 1
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 86528,
+              "input_tokens": 97701,
+              "output_tokens": 1299,
+              "reasoning_output_tokens": 318,
+              "uncached_input_tokens": 11173
+            }
+          },
+          "semantic": {
+            "bytes": 1339,
+            "characters": 1339,
+            "lines": 22,
+            "words": 194
+          }
+        }
+      ],
+      "case": "feature-flags",
+      "compression": {
+        "bytes_percent": 37.11,
+        "words_percent": 44.41
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "24e66cceb9632b0ce7bad509d9b97718c0b4ae1b118be0735c24fbbf44693adb",
+        "spec_sha256": "e2822daf3d745b88f15d1949bd265e16d6cf0e57bb08b9f05fb77f37dee7853f"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 36.072,
+        "event_errors": [],
+        "final_message": "Written [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/feature-flags-attempt-1/result.spec.ctx). Conversion check passed with `--encoding o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e47-44e1-7e53-9f07-0368e64d83ed",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 86528,
+          "input_tokens": 97701,
+          "output_tokens": 1299,
+          "reasoning_output_tokens": 318,
+          "uncached_input_tokens": 11173
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1339,
+        "characters": 1339,
+        "lines": 22,
+        "words": 194
+      },
+      "source": {
+        "bytes": 2129,
+        "characters": 2123,
+        "lines": 15,
+        "words": 349
+      }
+    },
+    {
+      "artifact": "specs/inventory-reservation.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/inventory-reservation-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1877,
+              "tokens": 413,
+              "words": 229
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 1989,
+              "tokens": 440,
+              "words": 281
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "7983b9926e3191308dc5c2cdf0cc836b3e159139c7556802e13b5988f179c59e"
+          },
+          "provider": {
+            "duration_seconds": 68.923,
+            "event_errors": [],
+            "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/inventory-reservation-attempt-1/result.spec.ctx) written and conversion quality check passed with `o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e47-d39c-7c90-86a9-a4379d761792",
+            "tool_call_total": 7,
+            "tool_calls": {
+              "command_execution": 5,
+              "file_change": 2
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 125952,
+              "input_tokens": 141027,
+              "output_tokens": 2875,
+              "reasoning_output_tokens": 1207,
+              "uncached_input_tokens": 15075
+            }
+          },
+          "semantic": {
+            "bytes": 1877,
+            "characters": 1877,
+            "lines": 30,
+            "words": 229
+          }
+        }
+      ],
+      "case": "inventory-reservation",
+      "compression": {
+        "bytes_percent": 5.63,
+        "words_percent": 18.51
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "7a442c14d4b9e304f43bbcdbb23dba7355abfda653d768024a186647cd496bda",
+        "spec_sha256": "7983b9926e3191308dc5c2cdf0cc836b3e159139c7556802e13b5988f179c59e"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 68.923,
+        "event_errors": [],
+        "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/inventory-reservation-attempt-1/result.spec.ctx) written and conversion quality check passed with `o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e47-d39c-7c90-86a9-a4379d761792",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 125952,
+          "input_tokens": 141027,
+          "output_tokens": 2875,
+          "reasoning_output_tokens": 1207,
+          "uncached_input_tokens": 15075
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1877,
+        "characters": 1877,
+        "lines": 30,
+        "words": 229
+      },
+      "source": {
+        "bytes": 1989,
+        "characters": 1989,
+        "lines": 42,
+        "words": 281
+      }
+    },
+    {
+      "artifact": "specs/invoice-totals.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/invoice-totals-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1718,
+              "tokens": 463,
+              "words": 211
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": false,
+            "smaller_words": true,
+            "source": {
+              "bytes": 1936,
+              "tokens": 459,
+              "words": 291
+            }
+          },
+          "error": "RuntimeError: invoice-totals: conversion check failed: {\"encoding\": \"o200k_base\", \"output\": {\"bytes\": 1718, \"tokens\": 463, \"words\": 211}, \"smaller_bytes\": true, \"smaller_tokens\": false, \"smaller_words\": true, \"source\": {\"bytes\": 1936, \"tokens\": 459, \"words\": 291}}",
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "d0f4ff81b87d4643b1daa3f4e708d53ee50e2ac328582809c84d621f0de069a0"
+          },
+          "provider": {
+            "duration_seconds": 71.766,
+            "event_errors": [],
+            "final_message": "Created [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/invoice-totals-attempt-1/result.spec.ctx).",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e48-e264-7971-b0aa-f6f9f2cc242d",
+            "tool_call_total": 7,
+            "tool_calls": {
+              "command_execution": 5,
+              "file_change": 2
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 116736,
+              "input_tokens": 136305,
+              "output_tokens": 3038,
+              "reasoning_output_tokens": 1009,
+              "uncached_input_tokens": 19569
+            }
+          },
+          "semantic": {
+            "bytes": 1718,
+            "characters": 1718,
+            "lines": 25,
+            "words": 211
+          }
+        },
+        {
+          "artifact": "attempts/invoice-totals-a2.spec.ctx",
+          "attempt": 2,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1649,
+              "tokens": 445,
+              "words": 180
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 1936,
+              "tokens": 459,
+              "words": 291
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "d49311cebe21fa8b890fe1ba954f9eee3c936bbe89f7c20b491fe6b578f1960a",
+            "spec_sha256": "9188553a78644113fb34748ba4ca949316ba9564451d2ea124c5aed8e0dfb71b"
+          },
+          "provider": {
+            "duration_seconds": 86.905,
+            "event_errors": [],
+            "final_message": "Done.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e49-fce3-70c1-949f-f87057cc8c6d",
+            "tool_call_total": 9,
+            "tool_calls": {
+              "command_execution": 5,
+              "file_change": 4
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 166400,
+              "input_tokens": 181227,
+              "output_tokens": 3555,
+              "reasoning_output_tokens": 1620,
+              "uncached_input_tokens": 14827
+            }
+          },
+          "semantic": {
+            "bytes": 1649,
+            "characters": 1649,
+            "lines": 30,
+            "words": 180
+          }
+        }
+      ],
+      "case": "invoice-totals",
+      "compression": {
+        "bytes_percent": 14.82,
+        "words_percent": 38.14
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "d49311cebe21fa8b890fe1ba954f9eee3c936bbe89f7c20b491fe6b578f1960a",
+        "source_sha256": "189a8c3187898e40c2f55f2155c35618d1e16ba547d5ea8d6024306952d9a81b",
+        "spec_sha256": "9188553a78644113fb34748ba4ca949316ba9564451d2ea124c5aed8e0dfb71b"
+      },
+      "provider": {
+        "attempt_count": 2,
+        "duration_seconds": 158.671,
+        "event_errors": [],
+        "final_message": "Done.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e49-fce3-70c1-949f-f87057cc8c6d",
+        "tool_call_total": 16,
+        "tool_calls": {
+          "command_execution": 10,
+          "file_change": 6
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 283136,
+          "input_tokens": 317532,
+          "output_tokens": 6593,
+          "reasoning_output_tokens": 2629,
+          "uncached_input_tokens": 34396
+        }
+      },
+      "selected_attempt": 2,
+      "semantic": {
+        "bytes": 1649,
+        "characters": 1649,
+        "lines": 30,
+        "words": 180
+      },
+      "source": {
+        "bytes": 1936,
+        "characters": 1936,
+        "lines": 38,
+        "words": 291
+      }
+    },
+    {
+      "artifact": "specs/order-transitions.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/order-transitions-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1513,
+              "tokens": 351,
+              "words": 178
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 2030,
+              "tokens": 490,
+              "words": 292
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "7305896ab2aef5a7273e45b6a14b9016311f936ca2f24f0a8e1a5b6577e77203"
+          },
+          "provider": {
+            "duration_seconds": 53.239,
+            "event_errors": [],
+            "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/order-transitions-attempt-1/result.spec.ctx) written and conversion check passed with `o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e4b-51e1-7e61-934d-eaf5a8434dfd",
+            "tool_call_total": 5,
+            "tool_calls": {
+              "command_execution": 4,
+              "file_change": 1
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 83456,
+              "input_tokens": 97802,
+              "output_tokens": 1262,
+              "reasoning_output_tokens": 265,
+              "uncached_input_tokens": 14346
+            }
+          },
+          "semantic": {
+            "bytes": 1513,
+            "characters": 1513,
+            "lines": 29,
+            "words": 178
+          }
+        }
+      ],
+      "case": "order-transitions",
+      "compression": {
+        "bytes_percent": 25.47,
+        "words_percent": 39.04
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "99671cca8a81755421d4c361033da01412bf56260ac69c39ec13f775f35eb346",
+        "spec_sha256": "7305896ab2aef5a7273e45b6a14b9016311f936ca2f24f0a8e1a5b6577e77203"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 53.239,
+        "event_errors": [],
+        "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/order-transitions-attempt-1/result.spec.ctx) written and conversion check passed with `o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e4b-51e1-7e61-934d-eaf5a8434dfd",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 83456,
+          "input_tokens": 97802,
+          "output_tokens": 1262,
+          "reasoning_output_tokens": 265,
+          "uncached_input_tokens": 14346
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1513,
+        "characters": 1513,
+        "lines": 29,
+        "words": 178
+      },
+      "source": {
+        "bytes": 2030,
+        "characters": 2030,
+        "lines": 40,
+        "words": 292
+      }
+    },
+    {
+      "artifact": "specs/retry-schedule.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/retry-schedule-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1150,
+              "tokens": 274,
+              "words": 150
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 1695,
+              "tokens": 385,
+              "words": 260
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "cb425491c0902e1aec9e3fea5b403781b830c25ea78e8254263cc9e6e33b5f7d"
+          },
+          "provider": {
+            "duration_seconds": 39.651,
+            "event_errors": [],
+            "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/retry-schedule-attempt-1/result.spec.ctx) created and passed the required conversion check with `--encoding o200k_base`.",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e4c-23fa-7963-aa06-d7372f3730e5",
+            "tool_call_total": 5,
+            "tool_calls": {
+              "command_execution": 4,
+              "file_change": 1
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 80384,
+              "input_tokens": 97063,
+              "output_tokens": 1105,
+              "reasoning_output_tokens": 249,
+              "uncached_input_tokens": 16679
+            }
+          },
+          "semantic": {
+            "bytes": 1150,
+            "characters": 1150,
+            "lines": 17,
+            "words": 150
+          }
+        }
+      ],
+      "case": "retry-schedule",
+      "compression": {
+        "bytes_percent": 32.15,
+        "words_percent": 42.31
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "047f7763f2a09a0693ec15b8e8ad17a7cd6de9dc0e83afac9a5bf8d6ee671bb3",
+        "spec_sha256": "cb425491c0902e1aec9e3fea5b403781b830c25ea78e8254263cc9e6e33b5f7d"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 39.651,
+        "event_errors": [],
+        "final_message": "[result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/retry-schedule-attempt-1/result.spec.ctx) created and passed the required conversion check with `--encoding o200k_base`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e4c-23fa-7963-aa06-d7372f3730e5",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 80384,
+          "input_tokens": 97063,
+          "output_tokens": 1105,
+          "reasoning_output_tokens": 249,
+          "uncached_input_tokens": 16679
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1150,
+        "characters": 1150,
+        "lines": 17,
+        "words": 150
+      },
+      "source": {
+        "bytes": 1695,
+        "characters": 1693,
+        "lines": 13,
+        "words": 260
+      }
+    },
+    {
+      "artifact": "specs/webhook-validation.spec.ctx",
+      "attempts": [
+        {
+          "artifact": "attempts/webhook-validation-a1.spec.ctx",
+          "attempt": 1,
+          "conversion_check": {
+            "encoding": "o200k_base",
+            "output": {
+              "bytes": 1418,
+              "tokens": 336,
+              "words": 180
+            },
+            "smaller_bytes": true,
+            "smaller_tokens": true,
+            "smaller_words": true,
+            "source": {
+              "bytes": 2065,
+              "tokens": 452,
+              "words": 298
+            }
+          },
+          "error": null,
+          "provenance": {
+            "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+            "spec_sha256": "615b463f4bb8a4b17b498e1a73af60d88976f2424255676f571d503e18af60c4"
+          },
+          "provider": {
+            "duration_seconds": 62.311,
+            "event_errors": [],
+            "final_message": "Written and validated [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/webhook-validation-attempt-1/result.spec.ctx).",
+            "return_code": 0,
+            "stderr_tail": "",
+            "thread_id": "01a05e4c-c094-7b70-b98c-53cbe8370699",
+            "tool_call_total": 7,
+            "tool_calls": {
+              "command_execution": 5,
+              "file_change": 2
+            },
+            "usage": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 115712,
+              "input_tokens": 133868,
+              "output_tokens": 2244,
+              "reasoning_output_tokens": 1111,
+              "uncached_input_tokens": 18156
+            }
+          },
+          "semantic": {
+            "bytes": 1418,
+            "characters": 1418,
+            "lines": 22,
+            "words": 180
+          }
+        }
+      ],
+      "case": "webhook-validation",
+      "compression": {
+        "bytes_percent": 31.33,
+        "words_percent": 39.6
+      },
+      "error": null,
+      "provenance": {
+        "prompt_sha256": "09c3a2f230fe8c5ee879d76fbb4234315530e1ef73dc3d60247cc91316af6654",
+        "source_sha256": "98cf8179dc52e938207521446733a6262272b610b1d9918f1ecc909bc8d40189",
+        "spec_sha256": "615b463f4bb8a4b17b498e1a73af60d88976f2424255676f571d503e18af60c4"
+      },
+      "provider": {
+        "attempt_count": 1,
+        "duration_seconds": 62.311,
+        "event_errors": [],
+        "final_message": "Written and validated [result.spec.ctx](/tmp/semantic-spec-generate-sdkaei_1/webhook-validation-attempt-1/result.spec.ctx).",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05e4c-c094-7b70-b98c-53cbe8370699",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 115712,
+          "input_tokens": 133868,
+          "output_tokens": 2244,
+          "reasoning_output_tokens": 1111,
+          "uncached_input_tokens": 18156
+        }
+      },
+      "selected_attempt": 1,
+      "semantic": {
+        "bytes": 1418,
+        "characters": 1418,
+        "lines": 22,
+        "words": 180
+      },
+      "source": {
+        "bytes": 2065,
+        "characters": 2065,
+        "lines": 13,
+        "words": 298
+      }
+    }
+  ],
+  "run_id": "20260901T184036Z",
+  "schema_version": 1,
+  "skill_sha256": "90a58a0347de13c239558f017123bc020508c2eac1434f8911acfae519d2d7dc",
+  "token_encoding": "o200k_base"
+}

@@ -1,0 +1,29 @@
+spec
+target: solution.py :: implement apply_order_event(order, event)
+
+contract:
+  order,event: JSON objects; order["status"] exists and both may have other fields
+  never mutate either input
+  success: {"ok": true, "order": updated_order}; updated_order is a deep copy of order, retaining unrelated fields
+  errors are deterministic objects; add no timestamps or generated values
+
+transitions:
+  pending: pay -> paid; cancel -> cancelled
+  paid: pack -> packed; cancel -> cancelled; refund -> refunded
+  packed: ship -> shipped; refund -> refunded
+  shipped: deliver -> delivered; refund -> refunded
+  delivered,cancelled,refunded: no outgoing transitions
+
+rules:
+  event types: pay,pack,ship,deliver,cancel,refund
+  unknown event type -> {"ok": false, "error": "unknown_event", "event": event_type}
+  known but disallowed from current status -> {"ok": false, "error": "invalid_transition", "status": current_status, "event": event_type}
+  evaluate transition validity before event payload
+  allowed pay: event["payment_id"] must be a non-empty string after trimming; otherwise -> {"ok": false, "error": "missing_payment_id"}; store the trimmed value in updated_order["payment_id"]
+  allowed ship: event["tracking_number"] must be a non-empty string after trimming; otherwise -> {"ok": false, "error": "missing_tracking_number"}; store the trimmed value in updated_order["tracking_number"]
+  ignore event fields other than payment_id and tracking_number
+
+acceptance:
+  A1: transitions
+  A2: rules
+  A3: contract

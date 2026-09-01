@@ -1,0 +1,30 @@
+spec
+target: solution.py :: implement reserve_inventory(inventory, request)
+
+inputs:
+  inventory: JSON object {canonical case-sensitive SKU string: non-negative int}; bool is not int
+  request: reservation_id non-empty string; items list of {sku non-empty string, quantity positive int}; bool quantity is not int
+  normalize reservation_id and each item sku by trimming surrounding whitespace; SKU matching remains case-sensitive
+  never mutate either input object
+
+flow:
+  aggregate repeated normalized SKUs in distinct SKU first-seen order
+  availability: inventory[sku] when present, else 0
+  all totals available -> {"ok": true, "reservation_id": normalized_id, "inventory": updated_inventory, "reserved": [{"sku": sku, "quantity": total}, ...]}; updated_inventory retains original keys and subtracts totals
+  otherwise -> {"ok": false, "reservation_id": normalized_id, "inventory": unchanged_inventory_copy, "shortages": [{"sku": sku, "requested": total, "available": count}, ...]}; omit reserved; do not decrement stock
+  reserved and shortages use aggregate order
+  items=[] -> successful no-op
+
+validation:
+  inventory not object: ValueError "inventory must be an object"
+  inventory stock not non-negative int: ValueError "inventory quantities must be non-negative integers"
+  reservation_id not non-empty string: ValueError "reservation_id must be a non-empty string"
+  items not list: ValueError "items must be a list"
+  item not object: ValueError "each item must be an object"
+  sku not non-empty string: ValueError "sku must be a non-empty string"
+  quantity not positive int: ValueError "quantity must be a positive integer"
+
+acceptance:
+  A1: normalization, case-sensitive aggregation, first-seen order
+  A2: atomic success/failure results, copies, shortages, no partial decrement
+  A3: empty no-op, exact validation errors, booleans excluded, inputs unchanged

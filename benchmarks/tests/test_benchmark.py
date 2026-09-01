@@ -73,6 +73,30 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(rows[0]["baseline"]["tokens"], rows[0]["baseline"]["words"])
         self.assertGreater(rows[0]["token_reduction_percent"], 0)
 
+    def test_quality_gate_rejects_case_regression_hidden_by_aggregate(self) -> None:
+        def result(case: str, variant: str, passed: bool) -> dict[str, object]:
+            return {
+                "case": case,
+                "variant": variant,
+                "provider": {"usage": {}, "duration_seconds": 0},
+                "grade": {
+                    "passed": int(passed),
+                    "total": 1,
+                    "acceptance_passed": int(passed),
+                    "acceptance_total": 1,
+                    "task_success": passed,
+                },
+                "cost_usd": None,
+            }
+
+        rows = [
+            result("case-a", "baseline", True),
+            result("case-a", "semantic", False),
+            result("case-b", "baseline", False),
+            result("case-b", "semantic", True),
+        ]
+        self.assertFalse(benchmark_module.quality_preserved(rows))
+
     def test_semantic_variants_are_direct_execution_documents(self) -> None:
         ambiguous_python_map_fields = (
             "event.type",
@@ -307,6 +331,7 @@ class BenchmarkCliTest(unittest.TestCase):
             text = report_path.read_text(encoding="utf-8")
             self.assertIn("Context Benchmark", text)
             self.assertIn("smoke run", text)
+            self.assertIn("Total uncached input", text)
 
     def test_conversion_check_requires_fewer_bytes_and_words(self) -> None:
         with tempfile.TemporaryDirectory(prefix="semantic-spec-size-") as directory:
@@ -404,6 +429,28 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(aggregate["usage"]["input_tokens"], 300)
         self.assertEqual(aggregate["usage"]["output_tokens"], 30)
         self.assertEqual(aggregate["tool_call_total"], 2)
+
+    def test_lifecycle_uses_selected_attempt_token_metrics(self) -> None:
+        lifecycle = load_module("benchmark_lifecycle_tokens", LIFECYCLE)
+        generation = {
+            "results": [{
+                "case": "example",
+                "selected_attempt": 2,
+                "attempts": [
+                    {"conversion_check": None},
+                    {
+                        "conversion_check": {
+                            "source": {"bytes": 100, "words": 20, "tokens": 30},
+                            "output": {"bytes": 60, "words": 10, "tokens": 18},
+                        }
+                    },
+                ],
+            }]
+        }
+        rows = lifecycle.generation_static_rows(generation)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["token_reduction_percent"], 40.0)
+        self.assertEqual(rows[0]["byte_reduction_percent"], 40.0)
 
     def test_lifecycle_break_even_is_inapplicable_after_quality_regression(self) -> None:
         lifecycle = load_module("benchmark_lifecycle_quality", LIFECYCLE)

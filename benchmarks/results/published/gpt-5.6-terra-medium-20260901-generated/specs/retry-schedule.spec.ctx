@@ -1,0 +1,17 @@
+spec
+target: solution.py :: implement build_retry_schedule(attempts, base_delay, max_delay, retry_after=None); return retry delays without mutating inputs
+
+contract:
+  numeric args: attempts, base_delay, max_delay are non-negative Python int; retry_after is None or non-negative Python int; bool is not int
+  type error: each non-int argument -> TypeError "<name> must be an integer"
+  value error: each negative argument -> ValueError "<name> must be non-negative"
+  validate all arguments before schedule calculation, including attempts=0
+  output: attempts=0 -> []; otherwise list[int] in retry order, one per retry; exclude initial attempt and metadata
+
+rules:
+  R1: zero-based retry i uncapped = base_delay * 2**i (retry 1 starts at base_delay; later retries double prior uncapped value)
+  R2: result[i] = min(max_delay, max(base_delay * 2**i, retry_after or 0)); retry_after is a per-retry lower bound and max_delay wins when retry_after > max_delay
+
+acceptance:
+  A1: contract,R1,R2 (valid schedules: zero attempts, zero base_delay, max_delay below base_delay, server lower bound)
+  A2: contract (specified type and non-negative-value errors)

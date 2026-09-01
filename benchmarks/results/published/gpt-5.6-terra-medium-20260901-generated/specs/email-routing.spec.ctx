@@ -1,0 +1,25 @@
+spec
+target: solution.py :: implement route_email(message)
+
+contract:
+  input: JSON object with sender string, recipients list of email strings, subject string, body string
+  result: JSON object with exactly queue, priority, normalized_sender, normalized_recipients
+  normalization: sender and each recipient -> remove surrounding whitespace, lowercase; preserve recipient order and duplicates; do not mutate message or its recipients list
+
+routing:
+  R1: normalized sender domain = text after last @; domain in [spam.test,malware.test] -> queue=spam, before all other rules
+  R2: non-spam recipient local part = text before first @; exact labels select queues billing, support, sales; multiple labels -> billing > support > sales
+  R3: if R2 selects none, tokenize lowercased subject and body with ASCII [a-z0-9]+; category tokens: billing=[invoice,payment,refund,charge], support=[help,issue,error,bug], sales=[quote,demo,pricing]; matching categories -> billing > support > sales, else general
+  R4: recipient-label selection takes precedence over content-category selection
+
+priority:
+  R5: spam -> low; otherwise subject/body token in [urgent,asap,outage] -> high, else normal; matching is case-insensitive and punctuation separates tokens
+
+edge_cases:
+  R6: empty subject, body, or recipients is valid and follows these rules
+
+acceptance:
+  A1: contract
+  A2: R1,R2,R3,R4
+  A3: contract,R5
+  A4: R6

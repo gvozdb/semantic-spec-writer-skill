@@ -1,0 +1,26 @@
+spec
+target: solution.py :: implement paginate(records, limit, cursor=None)
+
+contract:
+  records: list; preserve the list and every record
+  result: object with exactly items (selected records) and next_cursor (opaque string if more records remain, else None)
+
+validation:
+  limit: type is int and not bool, 1<=limit<=100 | ValueError "limit must be an integer from 1 to 100"
+  cursor: decode to an object with exactly offset; offset is int, not bool, >=0 | ValueError "invalid cursor"
+  offset: offset<=len(records) | ValueError "cursor offset is past the end of records"
+
+cursor:
+  encode(offset): UTF-8 JSON of {"offset": offset}, sorted keys, separators=(',',':'); URL-safe Base64 encode; strip trailing =
+  decode(cursor): add required Base64 padding; URL-safe Base64 decode; parse JSON
+  None -> offset 0
+
+pagination:
+  items: records[offset:offset+limit], unchanged order and contents
+  next_offset: offset+len(items)
+  next_cursor: encode(next_offset) if next_offset<len(records), else None
+  offset==len(records), including empty records -> items=[] and next_cursor=None
+
+acceptance:
+  A1: contract,cursor,pagination # canonical cursors, slicing, final page, empty input, preservation
+  A2: validation # invalid limits, malformed cursors, past-end offsets

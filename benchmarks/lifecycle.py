@@ -360,6 +360,36 @@ def fmt(value: float | int | None, digits: int = 1) -> str:
     return f"{value:.{digits}f}"
 
 
+def generation_static_rows(generation: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for result in generation["results"]:
+        selected_attempt = result.get("selected_attempt")
+        if selected_attempt is None:
+            continue
+        check = result["attempts"][selected_attempt - 1].get("conversion_check")
+        if not check:
+            continue
+        source = check["source"]
+        semantic = check["output"]
+        rows.append({
+            "case": result["case"],
+            "baseline": source,
+            "semantic": semantic,
+            "byte_reduction_percent": core.compression_percent(
+                source["bytes"], semantic["bytes"]
+            ),
+            "word_reduction_percent": core.compression_percent(
+                source["words"], semantic["words"]
+            ),
+            "token_reduction_percent": (
+                core.compression_percent(source["tokens"], semantic["tokens"])
+                if "tokens" in source and "tokens" in semantic
+                else None
+            ),
+        })
+    return rows
+
+
 def render_report(generation: dict[str, Any], implementation: dict[str, Any]) -> str:
     if set(generation["cases"]) != set(implementation["cases"]):
         raise ValueError("generation and implementation case sets differ")
@@ -387,11 +417,7 @@ def render_report(generation: dict[str, Any], implementation: dict[str, Any]) ->
     complete_pairs = len(implementation["results"]) == (
         len(implementation["cases"]) * repetitions * len(core.VARIANTS)
     )
-    quality_preserved = bool(
-        semantic["task_success_rate"] >= baseline["task_success_rate"]
-        and semantic["acceptance_pass_rate"] >= baseline["acceptance_pass_rate"]
-        and semantic["test_pass_rate"] >= baseline["test_pass_rate"]
-    )
+    quality_preserved = core.quality_preserved(implementation["results"])
     credible = bool(
         generation["provider"] != "mock"
         and generation.get("model")
@@ -508,12 +534,14 @@ def render_report(generation: dict[str, Any], implementation: dict[str, Any]) ->
                 f"{fmt(semantic_total)} | {core.format_delta(delta)} |"
             )
 
-    static = implementation["static"]
+    static = generation_static_rows(generation) or implementation["static"]
     lines.extend([
         "",
         "## Generated document size",
         "",
         core.render_static_markdown(static).rstrip(),
+        "",
+        f"Tokenizer: `{generation.get('token_encoding') or 'not recorded'}`.",
         "",
         "## Interpretation",
         "",

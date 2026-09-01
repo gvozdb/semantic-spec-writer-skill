@@ -1,6 +1,6 @@
 benchmarks/results/*
 !benchmarks/results/.gitkeep
 !benchmarks/results/published/
-!benchmarks/results/published/*.json
+!benchmarks/results/published/**
 __pycache__/
 *.pyc

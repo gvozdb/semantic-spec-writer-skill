@@ -792,6 +792,25 @@ def aggregate_variant(results: list[dict[str, Any]], variant: str) -> dict[str, 
     }
 
 
+def quality_preserved(results: list[dict[str, Any]]) -> bool:
+    def not_worse(selected: list[dict[str, Any]]) -> bool:
+        baseline = aggregate_variant(selected, "baseline")
+        semantic = aggregate_variant(selected, "semantic")
+        return bool(
+            semantic["task_success_rate"] >= baseline["task_success_rate"]
+            and semantic["acceptance_pass_rate"] >= baseline["acceptance_pass_rate"]
+            and semantic["test_pass_rate"] >= baseline["test_pass_rate"]
+        )
+
+    if not not_worse(results):
+        return False
+    cases = {result["case"] for result in results}
+    return all(
+        not_worse([result for result in results if result["case"] == case])
+        for case in cases
+    )
+
+
 def paired_reductions(results: list[dict[str, Any]], field: str) -> list[float]:
     pairs: dict[tuple[str, int], dict[str, dict[str, Any]]] = {}
     for result in results:
@@ -900,7 +919,8 @@ def render_report(document: dict[str, Any]) -> str:
         f"Model: `{document.get('model') or 'provider default'}`  ",
         f"Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`  ",
         f"Cases: {len(document['cases'])}  ",
-        f"Repetitions: {document['repetitions']}",
+        f"Repetitions: {document['repetitions']}  ",
+        f"Semantic source: `{document.get('semantic_source', 'curated')}`",
         "",
     ]
     if not credible:
@@ -958,27 +978,23 @@ def render_report(document: dict[str, Any]) -> str:
         )
     input_ci = input_summary["fixture_cluster_bootstrap_95_ci"]
     uncached_ci = uncached_summary["fixture_cluster_bootstrap_95_ci"]
-    quality_preserved = bool(
-        semantic["task_success_rate"] >= baseline["task_success_rate"]
-        and semantic["acceptance_pass_rate"] >= baseline["acceptance_pass_rate"]
-        and semantic["test_pass_rate"] >= baseline["test_pass_rate"]
-    )
+    measured_quality_preserved = quality_preserved(results)
     input_saving = bool(
         credible
-        and quality_preserved
+        and measured_quality_preserved
         and input_ci
         and input_ci[0] > 0
         and semantic["total_input_tokens"] < baseline["total_input_tokens"]
     )
     uncached_saving = bool(
         credible
-        and quality_preserved
+        and measured_quality_preserved
         and uncached_ci
         and uncached_ci[0] > 0
         and semantic["total_uncached_input_tokens"]
         < baseline["total_uncached_input_tokens"]
     )
-    if credible and not quality_preserved:
+    if credible and not measured_quality_preserved:
         interpretation = (
             "The semantic variant did not preserve measured implementation quality. "
             "Token and latency deltas are not product benefits when acceptance behavior regresses."

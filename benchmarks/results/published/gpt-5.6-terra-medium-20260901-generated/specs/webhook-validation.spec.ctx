@@ -1,0 +1,22 @@
+spec
+target: solution.py :: implement validate_webhook(payload, signature_header, secret, now, tolerance=300); no clock, randomness, network, or input mutation
+
+contract:
+  return exactly {"valid": bool, "reason": str}; success: {"valid": true, "reason": "ok"}; failures: reason in ["malformed","expired","mismatch"]
+  body: UTF-8 JSON of any payload, sorted object keys, separators=(',', ':'), ensure_ascii=False
+  signed bytes: ASCII timestamp text + '.' + body; digest: HMAC-SHA256(key=UTF-8 secret), 64 lowercase hex characters
+
+validation:
+  malformed: secret is empty or signature_header/secret is not str; now/tolerance is not int; tolerance<0
+  header: comma-separated key=value components; trim surrounding whitespace on component/key/value
+  header malformed: any component lacks '='; t count != 1; t value is empty or not ASCII decimal digits; no v1
+  v1: every value is exactly 64 lowercase hex characters; otherwise malformed
+  other well-formed components (for example v0): ignore
+
+flow:
+  parse t as int timestamp; abs(now-timestamp)>tolerance -> expired (boundary accepted)
+  otherwise constant-time compare computed digest with every v1; any match -> ok; no match -> mismatch
+
+acceptance:
+  A1: body, signed bytes, timestamp-current boundary, multiple/rotated v1, and HMAC match -> ok
+  A2: malformed validation -> malformed; stale timestamp -> expired; well-formed current nonmatching v1 -> mismatch
