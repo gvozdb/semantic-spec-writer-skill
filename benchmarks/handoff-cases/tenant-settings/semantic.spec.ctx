@@ -1,0 +1,34 @@
+spec
+goal: resolve typed tenant settings with explicit-null and strict precedence
+entrypoint: solution.py -> resolve_setting
+scope:
+  edit: settings/layers.py,settings/coercion.py,settings/service.py
+
+contract:
+  resolve_setting(name,kind,default,request_values,tenant_values,global_values) -> exactly {name,value,source}
+  preserve name and all inputs; result must not alias selected mutable values
+
+layers:
+  precedence: request > tenant > global > default
+  presence,not truthiness: selected null is explicit and does not fall through
+  select_layer -> exactly {source:request|tenant|global|default,raw:deep_copy(selected)}
+
+coercion:
+  validate kind in [bool,int,string] before handling null; else ValueError "unsupported setting kind"
+  null -> null
+  bool: type bool or trimmed case-insensitive "true"|"false"; else ValueError "invalid bool setting"
+  int: type int but not bool, or trimmed /^-?[0-9]+$/ string; no float; else ValueError "invalid int setting"
+  string: type string -> trimmed value, including empty; else ValueError "invalid string setting"
+
+result:
+  name: original name unchanged
+  value: coerce_value(selected.raw,kind)
+  source: selected.source
+
+verify:
+  V1: `python3 -m unittest -q test_smoke.py`
+
+acceptance:
+  A1: layers
+  A2: coercion
+  A3: contract,result

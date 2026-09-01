@@ -1,0 +1,27 @@
+spec
+goal: webhook dispatch; preserve inputs; no generated fields
+entrypoint: solution.py -> handle_webhook
+
+route:
+  edit: webhooks/signature.py::def verify_signature
+    do: strings only; exact /^sha256=[0-9a-f]{64}$/; safely compare HMAC-SHA256(UTF8 secret,UTF8 body); malformed -> false,never raise
+  edit: webhooks/events.py::def normalize_event
+    do: require string event["id"],event["type"] with non-empty strip else ValueError "invalid webhook event"; deep copy and set result["id"]=event["id"].strip(), result["type"]=event["type"].strip(); retain nested fields
+  edit: webhooks/dedup.py::def find_delivery
+    do: find_delivery -> deep copy first matching event_id else None; append_delivery -> deep-copy list and record
+  edit: webhooks/handler.py::def handle_webhook
+    do: signature first -> exactly {ok:false,status:401,error:"invalid_signature"}; normalization error -> exactly {ok:false,status:400,error:"invalid_event"}
+    do: type outside invoice.paid|invoice.failed -> exactly {ok:false,status:422,error:"unsupported_event",type}; do not record
+    do: duplicate normalized id -> exactly {ok:true,status:200,replayed:true,delivery:existing,deliveries:unchanged_deep_copy}
+    do: new record exactly {event_id,type}; return exactly {ok:true,status:200,replayed:false,delivery:record,deliveries:updated}
+  expand: edit all targets; inspect routed files first; expand only on code/import contradiction
+
+basis: route-sha256:7a708b67ba5b743b209291e38638888fcf7fb40dafcdb4dcba6c1ad3a003b818
+verify:
+  V1: `python3 -m unittest -q test_smoke.py`
+
+acceptance:
+  A1: signature
+  A2: normalization/type errors
+  A3: duplicate replay
+  A4: new delivery

@@ -5,21 +5,16 @@ from __future__ import annotations
 
 import argparse
 import copy
-import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
+import benchmark as core
+from solution_runtime import import_entrypoint
 
-def load_module(path: Path) -> ModuleType:
-    spec = importlib.util.spec_from_file_location("benchmark_solution", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot import {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+WORKER = Path(__file__).resolve().with_name("solution_worker.py")
+RUNTIME = Path(__file__).resolve().with_name("solution_runtime.py")
 
 
 def strict_equal(actual: Any, expected: Any) -> bool:
@@ -37,10 +32,72 @@ def strict_equal(actual: Any, expected: Any) -> bool:
     return actual == expected
 
 
-def grade(case_dir: Path, workspace: Path) -> dict[str, Any]:
+def execute_test(
+    workspace: Path,
+    entrypoint: str,
+    function_name: str,
+    args: list[Any],
+    kwargs: dict[str, Any],
+    modules: dict[str, Any],
+    untrusted: bool,
+) -> dict[str, Any]:
+    if untrusted:
+        request = json.dumps({
+            "workspace": str(workspace),
+            "entrypoint": entrypoint,
+            "call": function_name,
+            "args": args,
+            "kwargs": kwargs,
+        })
+        completed = core.run_restricted_sandbox(
+            [sys.executable, str(WORKER)],
+            workspace,
+            [WORKER, RUNTIME, workspace],
+            timeout=10,
+            input_text=request,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "solution worker failed: "
+                f"{completed.stdout.strip()} {completed.stderr.strip()}"
+            )
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        if not lines:
+            raise RuntimeError("solution worker returned no result")
+        if len(lines) != 1:
+            raise RuntimeError("solution worker returned ambiguous output")
+        response = json.loads(lines[0])
+        if "infrastructure_error" in response:
+            raise RuntimeError(response["infrastructure_error"])
+        return response
+
+    try:
+        if entrypoint not in modules:
+            modules[entrypoint] = import_entrypoint(workspace, entrypoint)
+        function = getattr(modules[entrypoint], function_name)
+        result = function(*args, **kwargs)
+        return {
+            "ok": True,
+            "result": result,
+            "args": args,
+            "kwargs": kwargs,
+        }
+    except Exception as exc:  # noqa: BLE001 - exception identity is grader data
+        return {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "args": args,
+            "kwargs": kwargs,
+        }
+
+
+def grade(case_dir: Path, workspace: Path, *, untrusted: bool = False) -> dict[str, Any]:
+    case_dir = case_dir.resolve()
+    workspace = workspace.resolve()
     manifest = json.loads((case_dir / "case.json").read_text(encoding="utf-8"))
     suite = json.loads((case_dir / "tests.json").read_text(encoding="utf-8"))
-    module = load_module(workspace / manifest["entrypoint"])
+    modules: dict[str, Any] = {}
     failures: list[dict[str, str]] = []
     acceptance_tests: dict[str, list[bool]] = {}
 
@@ -53,55 +110,80 @@ def grade(case_dir: Path, workspace: Path) -> dict[str, Any]:
         original_args = copy.deepcopy(args)
         original_kwargs = copy.deepcopy(kwargs)
 
-        try:
-            function = getattr(module, test["call"])
-            result = function(*args, **kwargs)
-            if "expect_error" in test:
+        entrypoint = str(test.get("entrypoint", manifest["entrypoint"]))
+        response = execute_test(
+            workspace,
+            entrypoint,
+            str(test["call"]),
+            args,
+            kwargs,
+            modules,
+            untrusted,
+        )
+        expected_error = test.get("expect_error")
+        if expected_error is not None:
+            if response["ok"]:
                 failures.append({
                     "name": name,
-                    "reason": f"expected {test['expect_error']}, got success",
+                    "reason": f"expected {expected_error}, got success",
                 })
                 acceptance_tests[acceptance_id].append(False)
                 continue
-            if not strict_equal(result, test.get("expect")):
+            if response["error_type"] != expected_error:
                 failures.append({
                     "name": name,
-                    "reason": f"expected {test.get('expect')!r}, got {result!r}",
-                })
-                acceptance_tests[acceptance_id].append(False)
-                continue
-            if test.get("preserve_inputs") and (
-                args != original_args or kwargs != original_kwargs
-            ):
-                failures.append({"name": name, "reason": "input was mutated"})
-                acceptance_tests[acceptance_id].append(False)
-                continue
-            acceptance_tests[acceptance_id].append(True)
-        except Exception as exc:  # noqa: BLE001 - exceptions are benchmark output
-            expected = test.get("expect_error")
-            if expected is None:
-                failures.append({
-                    "name": name,
-                    "reason": f"unexpected {type(exc).__name__}: {exc}",
-                })
-                acceptance_tests[acceptance_id].append(False)
-                continue
-            if type(exc).__name__ != expected:
-                failures.append({
-                    "name": name,
-                    "reason": f"expected {expected}, got {type(exc).__name__}: {exc}",
+                    "reason": (
+                        f"expected {expected_error}, got {response['error_type']}: "
+                        f"{response['error_message']}"
+                    ),
                 })
                 acceptance_tests[acceptance_id].append(False)
                 continue
             expected_message = test.get("error_message")
-            if expected_message is not None and str(exc) != expected_message:
+            if (
+                expected_message is not None
+                and response["error_message"] != expected_message
+            ):
                 failures.append({
                     "name": name,
-                    "reason": f"expected error {expected_message!r}, got {str(exc)!r}",
+                    "reason": (
+                        f"expected error {expected_message!r}, got "
+                        f"{response['error_message']!r}"
+                    ),
                 })
                 acceptance_tests[acceptance_id].append(False)
                 continue
             acceptance_tests[acceptance_id].append(True)
+            continue
+
+        if not response["ok"]:
+            failures.append({
+                "name": name,
+                "reason": (
+                    f"unexpected {response['error_type']}: "
+                    f"{response['error_message']}"
+                ),
+            })
+            acceptance_tests[acceptance_id].append(False)
+            continue
+        if not strict_equal(response["result"], test.get("expect")):
+            failures.append({
+                "name": name,
+                "reason": (
+                    f"expected {test.get('expect')!r}, got "
+                    f"{response['result']!r}"
+                ),
+            })
+            acceptance_tests[acceptance_id].append(False)
+            continue
+        if test.get("preserve_inputs") and (
+            response["args"] != original_args
+            or response["kwargs"] != original_kwargs
+        ):
+            failures.append({"name": name, "reason": "input was mutated"})
+            acceptance_tests[acceptance_id].append(False)
+            continue
+        acceptance_tests[acceptance_id].append(True)
 
     total = len(suite["tests"])
     acceptance = {
@@ -128,10 +210,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("workspace", type=Path)
+    parser.add_argument("--untrusted", action="store_true")
     args = parser.parse_args()
 
     try:
-        result = grade(args.case_dir.resolve(), args.workspace.resolve())
+        result = grade(
+            args.case_dir.resolve(),
+            args.workspace.resolve(),
+            untrusted=args.untrusted,
+        )
     except Exception as exc:  # noqa: BLE001 - produce machine-readable infra errors
         print(json.dumps({"infrastructure_error": f"{type(exc).__name__}: {exc}"}))
         return 2

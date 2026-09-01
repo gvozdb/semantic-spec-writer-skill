@@ -7,7 +7,9 @@
 
 Semantic Spec Writer turns plans, technical specifications, architecture notes, and acceptance criteria into a compact semantic format for LLMs.
 
-It writes `.plan.ctx` and `.spec.ctx` files. Each file is self-contained, so an implementation agent can read it without installing the skill.
+It writes `.plan.ctx` and `.spec.ctx` files. Each file is instruction-complete,
+so an implementation agent can read it without installing the skill. Repository
+execution packets are intentionally bound to the validated repository snapshot.
 
 ## What it does
 
@@ -15,13 +17,15 @@ It writes `.plan.ctx` and `.spec.ctx` files. Each file is self-contained, so an 
 - preserves exact file names, API routes, tables, fields, commands, and error codes;
 - moves unresolved requirements into `open_questions` instead of inventing answers;
 - allows short explanations as comment lines starting with `#`;
-- keeps domain vocabulary local to each specification.
+- keeps domain vocabulary local to each specification;
+- compiles repository handoffs into file-owned `do` actions with validated source anchors and stale-route detection.
 
 ## Benefits
 
 - reduces the document size that agents and humans need to inspect;
 - makes ambiguity visible before implementation starts;
 - links requirements to tasks and acceptance criteria;
+- replaces broad repository discovery with a bounded, stale-checked edit route;
 - stays readable for both humans and LLMs;
 - lets implementation agents read the output directly.
 
@@ -174,6 +178,30 @@ Example prompts:
 Convert this technical specification to a compact .spec.ctx file.
 Create an implementation plan as .plan.ctx from this issue and the current codebase.
 Rewrite docs/auth.md as a self-contained semantic spec without inventing requirements.
+Create a repository execution packet for this issue with the smallest complete edit route.
 ```
+
+## Repository execution packets
+
+For a coding handoff, the skill can compile requirements into a task-specific
+route instead of appending a file list to a complete spec. Every existing or new
+target owns one or more `do` actions. A SHA-256 basis over routed files detects
+stale packets before implementation.
+
+Validate a packet and its optional context budget:
+
+```bash
+python3 skills/semantic-spec-writer/scripts/check_execution_packet.py \
+  /path/to/repository /path/to/task.spec.ctx \
+  --encoding o200k_base \
+  --max-context-tokens 4000
+```
+
+Use `--print-basis` while authoring, then place the returned
+`route-sha256:<hash>` under `basis` and run the normal validation once.
+
+The separate three-arm benchmark compares Markdown, Semantic v1, and compiled
+Packet v2 on the same multi-file tasks. Packet v2 versus Semantic v1 is the
+primary comparison; see [methodology and commands](benchmarks/README.md).
 
 Semantic compression is lossy. Before handing a document to an implementation agent, review `acceptance`, exact identifiers, and `open_questions`.

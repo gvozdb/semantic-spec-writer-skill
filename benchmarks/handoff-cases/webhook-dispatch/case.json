@@ -1,0 +1,19 @@
+{
+  "id": "webhook-dispatch",
+  "title": "Signed idempotent webhook dispatch",
+  "entrypoint": "solution.py",
+  "verification_command": "python3 -m unittest -q test_smoke.py",
+  "execution_packet": true,
+  "semantic_required_patterns": [
+    "handle_webhook",
+    "webhooks/handler\\.py",
+    "webhooks/signature\\.py",
+    "webhooks/dedup\\.py",
+    "webhooks/events\\.py"
+  ],
+  "packet_required_patterns": [
+    "route:",
+    "basis: route-sha256:",
+    "expand:"
+  ]
+}

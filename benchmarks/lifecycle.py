@@ -29,13 +29,22 @@ def generation_prompt(
     token_encoding: str | None,
     previous_error: str | None = None,
 ) -> str:
+    packet_instruction = ""
+    if case.manifest.get("execution_packet"):
+        packet_instruction = (
+            "This case requires a repository execution packet. Inspect the isolated "
+            "starter repository under repo/, follow the execution-packet reference linked "
+            "from SKILL.md, and ground the route in existing files and source anchors. "
+            "Validate the final packet against repo/ with the skill checker. "
+        )
     prompt = (
         "Read skill/SKILL.md and convert source.md into a compact, self-contained "
         "implementation spec. Write only the artifact to result.spec.ctx. "
         f"The implementation target is {case.manifest['entrypoint']}. Preserve every "
         "requirement and every acceptance ID from the source. Do not implement the "
         "task. Apply the SKILL.md quality gate before finishing. Do not access files "
-        "outside this workspace or use network access.\n"
+        "outside this workspace or use network access. "
+        f"{packet_instruction}\n"
     )
     if token_encoding:
         prompt += (
@@ -66,6 +75,8 @@ def mock_provider() -> dict[str, Any]:
 
 
 def generation_document(args: argparse.Namespace, cases: list[core.BenchmarkCase]) -> dict[str, Any]:
+    cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
+    corpus = core.discover_cases(cases_dir=cases_dir)
     return {
         "schema_version": 1,
         "kind": "semantic-spec-generation",
@@ -77,6 +88,8 @@ def generation_document(args: argparse.Namespace, cases: list[core.BenchmarkCase
         "token_encoding": args.token_encoding,
         "max_attempts": args.max_attempts,
         "cases": [case.id for case in cases],
+        "case_suite": cases_dir.name,
+        "full_corpus": {case.id for case in cases} == {case.id for case in corpus},
         "environment": {
             "platform": platform.platform(),
             "python": platform.python_version(),
@@ -100,6 +113,18 @@ def failed_provider(message: str, duration: float | int | None = None) -> dict[s
         "event_errors": [message],
         "stderr_tail": "",
     }
+
+
+def provider_failure(provider: dict[str, Any]) -> str | None:
+    if provider.get("return_code") != 0:
+        return (
+            f"provider exited with {provider.get('return_code')}: "
+            f"{provider.get('stderr_tail', '')}"
+        )
+    event_errors = provider.get("event_errors", [])
+    if event_errors:
+        return "provider reported errors: " + "; ".join(event_errors)
+    return None
 
 
 def aggregate_attempt_providers(
@@ -152,10 +177,39 @@ def aggregate_attempt_providers(
     }
 
 
+def prepare_generation_workspace(
+    attempt_root: Path,
+    case: core.BenchmarkCase,
+) -> tuple[Path, Path]:
+    inputs = attempt_root / "inputs"
+    workspace = attempt_root / "workspace"
+    inputs.mkdir(parents=True)
+    workspace.mkdir()
+    shutil.copytree(SKILL_DIR, inputs / "skill")
+    shutil.copy2(case.spec_path("baseline"), inputs / "source.md")
+    shutil.copytree(
+        case.path / "starter",
+        inputs / "repo",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    (workspace / "skill").symlink_to(inputs / "skill", target_is_directory=True)
+    (workspace / "source.md").symlink_to(inputs / "source.md")
+    (workspace / "repo").symlink_to(inputs / "repo", target_is_directory=True)
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return workspace, inputs / "repo"
+
+
 def generate(args: argparse.Namespace) -> Path:
     if args.max_attempts < 1:
         raise ValueError("max attempts must be at least 1")
-    cases = core.discover_cases(args.case)
+    cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
+    cases = core.discover_cases(args.case, cases_dir)
     fixture_errors = core.validate(cases)
     if fixture_errors:
         raise RuntimeError("benchmark validation failed:\n" + "\n".join(fixture_errors))
@@ -174,6 +228,7 @@ def generate(args: argparse.Namespace) -> Path:
         for index, case in enumerate(cases, start=1):
             destination = specs / f"{case.id}.spec.ctx"
             source = case.spec_path("baseline").read_text(encoding="utf-8")
+            starter_hash = core.tree_sha256(case.path / "starter")
             attempts: list[dict[str, Any]] = []
             selected_attempt = None
             selected_semantic = ""
@@ -184,17 +239,15 @@ def generate(args: argparse.Namespace) -> Path:
                     f"attempt={attempt_number}/{args.max_attempts}",
                     flush=True,
                 )
-                workspace = temporary_root / f"{case.id}-attempt-{attempt_number}"
-                workspace.mkdir()
-                shutil.copytree(SKILL_DIR, workspace / "skill")
-                shutil.copy2(case.spec_path("baseline"), workspace / "source.md")
-                subprocess.run(
-                    ["git", "init", "--quiet"],
-                    cwd=workspace,
-                    check=True,
-                    capture_output=True,
-                    text=True,
+                attempt_root = (
+                    temporary_root / f"{case.id}-attempt-{attempt_number}"
                 )
+                workspace, starter_snapshot = prepare_generation_workspace(
+                    attempt_root, case
+                )
+                if core.tree_sha256(starter_snapshot) != starter_hash:
+                    raise RuntimeError(f"{case.id}: starter snapshot mismatch")
+                input_hash = core.tree_sha256(starter_snapshot.parent)
                 artifact_path = workspace / "result.spec.ctx"
                 prompt = generation_prompt(
                     case, args.token_encoding, previous_error
@@ -213,21 +266,52 @@ def generate(args: argparse.Namespace) -> Path:
                             args.timeout_seconds,
                         )
                     else:
-                        shutil.copy2(case.spec_path("semantic"), artifact_path)
-                        provider = mock_provider()
-                    if provider.get("return_code") != 0:
-                        raise RuntimeError(
-                            f"provider exited with {provider.get('return_code')}: "
-                            f"{provider.get('stderr_tail', '')}"
+                        source_artifact = (
+                            case.path / "packet.spec.ctx"
+                            if case.manifest.get("execution_packet")
+                            else case.spec_path("semantic")
                         )
-                    if not artifact_path.is_file():
+                        shutil.copy2(source_artifact, artifact_path)
+                        provider = mock_provider()
+                    if (
+                        core.tree_sha256(starter_snapshot) != starter_hash
+                        or core.tree_sha256(starter_snapshot.parent) != input_hash
+                    ):
+                        raise RuntimeError(
+                            f"{case.id}: immutable generation input was modified"
+                        )
+                    if failure := provider_failure(provider):
+                        raise RuntimeError(failure)
+                    if not artifact_path.is_file() or artifact_path.is_symlink():
                         raise RuntimeError("provider did not create result.spec.ctx")
+                    try:
+                        artifact_path.resolve().relative_to(workspace.resolve())
+                    except ValueError as exc:
+                        raise RuntimeError(
+                            "provider artifact escapes generation workspace"
+                        ) from exc
                     semantic = artifact_path.read_text(encoding="utf-8")
                     validation_errors = core.validate_semantic_text(case, semantic)
+                    verification_command = case.manifest.get("verification_command")
+                    if (
+                        not case.manifest.get("execution_packet")
+                        and verification_command
+                        and str(verification_command)
+                        not in core.verification_commands(semantic)
+                    ):
+                        validation_errors.append(
+                            f"{case.id}: generated spec lacks exact verification command"
+                        )
+                    if case.manifest.get("execution_packet"):
+                        validation_errors.extend(
+                            core.validate_execution_packet_artifact(
+                                case, artifact_path
+                            )
+                        )
                     check_command = [
                         sys.executable,
                         str(SKILL_DIR / "scripts" / "check_conversion.py"),
-                        str(workspace / "source.md"),
+                        str(case.spec_path("baseline")),
                         str(artifact_path),
                     ]
                     if args.token_encoding:
@@ -413,7 +497,9 @@ def render_report(generation: dict[str, Any], implementation: dict[str, Any]) ->
         ("Output tokens", "output_tokens", "total_output_tokens"),
     ]
     valid_generated = sum(result.get("error") is None for result in generation["results"])
-    full_corpus = set(generation["cases"]) == {case.id for case in core.discover_cases()}
+    full_corpus = bool(generation.get("full_corpus", (
+        set(generation["cases"]) == {case.id for case in core.discover_cases()}
+    )))
     complete_pairs = len(implementation["results"]) == (
         len(implementation["cases"]) * repetitions * len(core.VARIANTS)
     )
@@ -571,6 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["minimal", "low", "medium", "high", "xhigh"],
     )
     generate_parser.add_argument("--case", action="append", default=[])
+    generate_parser.add_argument("--cases-dir", type=Path)
     generate_parser.add_argument("--timeout-seconds", type=int, default=600)
     generate_parser.add_argument(
         "--token-encoding",

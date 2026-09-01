@@ -1,0 +1,79 @@
+{
+  "tests": [
+    {
+      "name": "verify valid signature",
+      "acceptance": "A1",
+      "entrypoint": "webhooks/signature.py",
+      "call": "verify_signature",
+      "args": ["key", "hello", "sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"],
+      "expect": true
+    },
+    {
+      "name": "reject uppercase digest",
+      "acceptance": "A1",
+      "entrypoint": "webhooks/signature.py",
+      "call": "verify_signature",
+      "args": ["key", "hello", "sha256=9307B3B915EFB5171FF14D8CB55FBCC798C6C0EF1456D66DED1A6AA723A58B7B"],
+      "expect": false
+    },
+    {
+      "name": "normalize event and retain nested data",
+      "acceptance": "A2",
+      "entrypoint": "webhooks/events.py",
+      "call": "normalize_event",
+      "args": [{"id": " evt-1 ", "type": " invoice.paid ", "data": {"invoice": {"id": "i1"}}}],
+      "expect": {"id": "evt-1", "type": "invoice.paid", "data": {"invoice": {"id": "i1"}}},
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject invalid event",
+      "acceptance": "A2",
+      "entrypoint": "webhooks/events.py",
+      "call": "normalize_event",
+      "args": [{"id": " ", "type": "invoice.paid"}],
+      "expect_error": "ValueError",
+      "error_message": "invalid webhook event"
+    },
+    {
+      "name": "append delivery without mutation",
+      "acceptance": "A4",
+      "entrypoint": "webhooks/dedup.py",
+      "call": "append_delivery",
+      "args": [[{"event_id": "e0", "type": "invoice.paid"}], {"event_id": "e1", "type": "invoice.failed"}],
+      "expect": [{"event_id": "e0", "type": "invoice.paid"}, {"event_id": "e1", "type": "invoice.failed"}],
+      "preserve_inputs": true
+    },
+    {
+      "name": "create supported delivery",
+      "acceptance": "A4",
+      "call": "handle_webhook",
+      "args": ["key", "hello", "sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b", {"id": " evt-1 ", "type": " invoice.paid ", "data": {"x": 1}}, []],
+      "expect": {"ok": true, "status": 200, "replayed": false, "delivery": {"event_id": "evt-1", "type": "invoice.paid"}, "deliveries": [{"event_id": "evt-1", "type": "invoice.paid"}]},
+      "preserve_inputs": true
+    },
+    {
+      "name": "replay existing delivery",
+      "acceptance": "A3",
+      "call": "handle_webhook",
+      "args": ["key", "hello", "sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b", {"id": "evt-1", "type": "invoice.failed"}, [{"event_id": "evt-1", "type": "invoice.paid", "meta": {"attempt": 1}}]],
+      "expect": {"ok": true, "status": 200, "replayed": true, "delivery": {"event_id": "evt-1", "type": "invoice.paid", "meta": {"attempt": 1}}, "deliveries": [{"event_id": "evt-1", "type": "invoice.paid", "meta": {"attempt": 1}}]},
+      "preserve_inputs": true
+    },
+    {
+      "name": "signature failure wins before event parsing",
+      "acceptance": "A1",
+      "call": "handle_webhook",
+      "args": ["key", "hello", "invalid", null, []],
+      "expect": {"ok": false, "status": 401, "error": "invalid_signature"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject unsupported type without record",
+      "acceptance": "A2",
+      "call": "handle_webhook",
+      "args": ["key", "hello", "sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b", {"id": "e2", "type": " customer.created "}, []],
+      "expect": {"ok": false, "status": 422, "error": "unsupported_event", "type": "customer.created"},
+      "preserve_inputs": true
+    }
+  ]
+}

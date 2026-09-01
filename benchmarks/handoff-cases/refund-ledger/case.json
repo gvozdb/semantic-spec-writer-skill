@@ -1,0 +1,18 @@
+{
+  "id": "refund-ledger",
+  "title": "Idempotent refund ledger workflow",
+  "entrypoint": "solution.py",
+  "verification_command": "python3 -m unittest -q test_smoke.py",
+  "execution_packet": true,
+  "semantic_required_patterns": [
+    "execute_refund",
+    "billing/service\\.py",
+    "billing/ledger\\.py",
+    "billing/events\\.py"
+  ],
+  "packet_required_patterns": [
+    "route:",
+    "basis: route-sha256:",
+    "expand:"
+  ]
+}

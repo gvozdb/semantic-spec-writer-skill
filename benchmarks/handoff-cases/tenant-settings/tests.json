@@ -1,0 +1,72 @@
+{
+  "tests": [
+    {
+      "name": "request null is explicit",
+      "acceptance": "A1",
+      "entrypoint": "settings/layers.py",
+      "call": "select_layer",
+      "args": ["enabled", true, {"enabled": null}, {"enabled": false}, {"enabled": true}],
+      "expect": {"source": "request", "raw": null},
+      "preserve_inputs": true
+    },
+    {
+      "name": "tenant beats global",
+      "acceptance": "A1",
+      "entrypoint": "settings/layers.py",
+      "call": "select_layer",
+      "args": ["limit", 5, {}, {"limit": {"value": 10}}, {"limit": {"value": 20}}],
+      "expect": {"source": "tenant", "raw": {"value": 10}},
+      "preserve_inputs": true
+    },
+    {
+      "name": "coerce case insensitive bool",
+      "acceptance": "A2",
+      "entrypoint": "settings/coercion.py",
+      "call": "coerce_value",
+      "args": [" FaLsE ", "bool"],
+      "expect": false
+    },
+    {
+      "name": "coerce signed decimal int",
+      "acceptance": "A2",
+      "entrypoint": "settings/coercion.py",
+      "call": "coerce_value",
+      "args": [" -42 ", "int"],
+      "expect": -42
+    },
+    {
+      "name": "reject bool as int",
+      "acceptance": "A2",
+      "entrypoint": "settings/coercion.py",
+      "call": "coerce_value",
+      "args": [true, "int"],
+      "expect_error": "ValueError",
+      "error_message": "invalid int setting"
+    },
+    {
+      "name": "unsupported kind checked before null",
+      "acceptance": "A2",
+      "entrypoint": "settings/coercion.py",
+      "call": "coerce_value",
+      "args": [null, "float"],
+      "expect_error": "ValueError",
+      "error_message": "unsupported setting kind"
+    },
+    {
+      "name": "resolve global integer",
+      "acceptance": "A3",
+      "call": "resolve_setting",
+      "args": [" retry_count ", "int", 1, {}, {}, {" retry_count ": " 7 "}],
+      "expect": {"name": " retry_count ", "value": 7, "source": "global"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "resolve trimmed default string",
+      "acceptance": "A3",
+      "call": "resolve_setting",
+      "args": ["label", "string", " default label ", {}, {}, {}],
+      "expect": {"name": "label", "value": "default label", "source": "default"},
+      "preserve_inputs": true
+    }
+  ]
+}

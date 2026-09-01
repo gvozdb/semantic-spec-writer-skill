@@ -1,6 +1,6 @@
 ---
 name: semantic-spec-writer
-description: Write or rewrite plans, technical specs, architecture notes, implementation plans, and acceptance criteria as compact, self-contained execution documents for LLM agents. Use when a user asks to create, compress, formalize, structure, or convert planning and technical Markdown.
+description: Write or rewrite plans, technical specs, architecture notes, implementation plans, acceptance criteria, and repository-grounded coding handoffs as compact execution documents for LLM agents. Use when a user asks to create, compress, formalize, structure, convert, or hand off planning and technical work.
 ---
 
 # Semantic Spec Writer
@@ -12,6 +12,7 @@ Produce `.plan.ctx` and `.spec.ctx` files that an implementation agent can use w
 - New document: write the final semantic artifact directly from the request and grounded repository facts. Do not create a prose draft first.
 - Existing document: convert it only as requested, preserving source meaning and identifiers. The final artifact must be shorter than the source.
 - Handoff or repeated use: optimize for independent execution by another agent or later turn.
+- Repository execution packet: when the user wants a coding handoff and the codebase is available, read [references/execution-packets.md](references/execution-packets.md). Ground a minimal read/edit route before writing the packet.
 
 Do not claim that conversion saves total tokens for a one-off implementation. It adds an authoring step; its economy comes from a smaller reusable context and less implementation ambiguity.
 
@@ -33,6 +34,7 @@ A smaller file is useful only when it remains faster to execute correctly. When 
 - Write one final artifact. Make it shorter in the initial write. For conversion, run `scripts/check_conversion.py SOURCE OUTPUT` from this skill directory once. When the target tokenizer is known and `tiktoken` is available, pass `--encoding NAME`. If the check fails, remove redundancy once and run it once more; never continue a size-chasing loop. Do not emit an outline, draft, conversion notes, size report, or explanation unless requested.
 - Do not copy repository facts that the implementation agent can obtain from the exact target file without search. Include facts that prevent a wrong edit or extra discovery.
 - Prefer exact paths and one runnable verification command over generic implementation advice.
+- For an execution packet, spend authoring effort only on facts that remove downstream discovery or prevent a wrong edit. Do not turn the packet into a repository dump.
 
 ## Format
 

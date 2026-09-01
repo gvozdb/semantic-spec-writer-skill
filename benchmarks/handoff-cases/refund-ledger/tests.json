@@ -1,0 +1,100 @@
+{
+  "tests": [
+    {
+      "name": "find scoped key and return copy",
+      "acceptance": "A2",
+      "entrypoint": "billing/ledger.py",
+      "call": "find_by_key",
+      "args": [[{"account_id": "a1", "key": "once", "nested": {"x": 1}}, {"account_id": "a2", "key": "once"}], "a1", " once "],
+      "expect": {"account_id": "a1", "key": "once", "nested": {"x": 1}},
+      "preserve_inputs": true
+    },
+    {
+      "name": "append ledger entry without mutation",
+      "acceptance": "A3",
+      "entrypoint": "billing/ledger.py",
+      "call": "append_entry",
+      "args": [[{"refund_id": "r0"}], {"refund_id": "r1", "meta": {"source": "api"}}],
+      "expect": [{"refund_id": "r0"}, {"refund_id": "r1", "meta": {"source": "api"}}],
+      "preserve_inputs": true
+    },
+    {
+      "name": "build exact refund event",
+      "acceptance": "A3",
+      "entrypoint": "billing/events.py",
+      "call": "build_refund_event",
+      "args": [{"account_id": "a1", "order_id": "o1", "refund_id": "r1", "amount_cents": 250}, " duplicate charge "],
+      "expect": {"type": "refund.created", "account_id": "a1", "order_id": "o1", "refund_id": "r1", "amount_cents": 250, "reason": "duplicate charge"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "create new refund",
+      "acceptance": "A4",
+      "call": "execute_refund",
+      "args": [
+        {"id": "o1", "account_id": "a1", "status": "paid", "paid_cents": 1000, "refunded_cents": 100, "meta": {"channel": "web"}},
+        {"key": " once ", "refund_id": " r1 ", "amount_cents": 250, "reason": " duplicate "},
+        [],
+        [{"type": "order.paid"}]
+      ],
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "refund": {"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250},
+        "order": {"id": "o1", "account_id": "a1", "status": "paid", "paid_cents": 1000, "refunded_cents": 350, "meta": {"channel": "web"}},
+        "ledger": [{"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250}],
+        "events": [{"type": "order.paid"}, {"type": "refund.created", "account_id": "a1", "order_id": "o1", "refund_id": "r1", "amount_cents": 250, "reason": "duplicate"}]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "replay existing refund",
+      "acceptance": "A2",
+      "call": "execute_refund",
+      "args": [
+        {"id": "o1", "account_id": "a1", "status": "shipped", "paid_cents": 1000, "refunded_cents": 250},
+        {"key": "once", "refund_id": "r1", "amount_cents": 250, "reason": "duplicate"},
+        [{"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250}],
+        [{"type": "refund.created"}]
+      ],
+      "expect": {
+        "ok": true,
+        "replayed": true,
+        "refund": {"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250},
+        "order": {"id": "o1", "account_id": "a1", "status": "shipped", "paid_cents": 1000, "refunded_cents": 250},
+        "ledger": [{"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250}],
+        "events": [{"type": "refund.created"}]
+      },
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject scoped idempotency conflict",
+      "acceptance": "A2",
+      "call": "execute_refund",
+      "args": [
+        {"id": "o1", "account_id": "a1", "status": "paid", "paid_cents": 1000, "refunded_cents": 0},
+        {"key": "once", "refund_id": "r2", "amount_cents": 250, "reason": "duplicate"},
+        [{"account_id": "a1", "order_id": "o1", "key": "once", "refund_id": "r1", "amount_cents": 250}],
+        []
+      ],
+      "expect": {"ok": false, "error": "idempotency_conflict"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject boolean amount before status",
+      "acceptance": "A1",
+      "call": "execute_refund",
+      "args": [{"status": "draft"}, {"key": "k", "refund_id": "r", "amount_cents": true, "reason": "x"}, [], []],
+      "expect": {"ok": false, "error": "invalid_amount"},
+      "preserve_inputs": true
+    },
+    {
+      "name": "reject amount above remaining",
+      "acceptance": "A1",
+      "call": "execute_refund",
+      "args": [{"id": "o", "account_id": "a", "status": "paid", "paid_cents": 500, "refunded_cents": 450}, {"key": "k", "refund_id": "r", "amount_cents": 51, "reason": "x"}, [], []],
+      "expect": {"ok": false, "error": "amount_exceeds_remaining"},
+      "preserve_inputs": true
+    }
+  ]
+}

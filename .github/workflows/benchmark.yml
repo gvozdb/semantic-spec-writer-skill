@@ -20,18 +20,27 @@ jobs:
           python-version: "3.12"
 
       - name: Validate benchmark fixtures
-        run: python3 benchmarks/benchmark.py validate
+        run: |
+          python3 benchmarks/benchmark.py validate
+          python3 benchmarks/handoff.py validate
 
       - name: Compile benchmark tools
         run: >-
           python3 -m py_compile
           benchmarks/benchmark.py
           benchmarks/context.py
+          benchmarks/grader.py
+          benchmarks/handoff.py
           benchmarks/lifecycle.py
+          benchmarks/solution_runtime.py
+          benchmarks/solution_worker.py
           skills/semantic-spec-writer/scripts/check_conversion.py
+          skills/semantic-spec-writer/scripts/check_execution_packet.py
 
       - name: Check semantic documents are smaller
-        run: python3 benchmarks/benchmark.py static --check
+        run: |
+          python3 benchmarks/benchmark.py static --check
+          python3 benchmarks/handoff.py static
 
       - name: Run benchmark harness tests
         run: python3 -m unittest discover -s benchmarks/tests -v

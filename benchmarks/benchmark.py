@@ -11,6 +11,7 @@ import platform
 import random
 import re
 import shutil
+import shlex
 import signal
 import statistics
 import subprocess
@@ -31,6 +32,22 @@ VARIANTS = {
     "baseline": "baseline.md",
     "semantic": "semantic.spec.ctx",
 }
+COMMAND_CATEGORY_PATTERNS = {
+    "discovery": re.compile(r"(?:^|[;&|()]|\s)(?:rg|grep|find|ls|tree)(?:\s|$)"),
+    "read": re.compile(r"(?:^|[;&|()]|\s)(?:cat|head|tail|sed|nl)(?:\s|$)"),
+    "verify": re.compile(
+        r"(?:pytest|unittest|py_compile|npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test)"
+    ),
+}
+VERIFY_LINE = re.compile(r"^  V\d+:\s*`([^`]+)`\s*$")
+CASE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+EXECUTION_PACKET_CHECK = (
+    ROOT
+    / "skills"
+    / "semantic-spec-writer"
+    / "scripts"
+    / "check_execution_packet.py"
+)
 
 
 @dataclass(frozen=True)
@@ -60,11 +77,30 @@ def write_json_atomic(path: Path, value: Any) -> None:
     temporary.replace(path)
 
 
-def discover_cases(selected: Iterable[str] | None = None) -> list[BenchmarkCase]:
+def discover_cases(
+    selected: Iterable[str] | None = None,
+    cases_dir: Path | None = None,
+) -> list[BenchmarkCase]:
+    cases_dir = (cases_dir or CASES_DIR).resolve()
+    if not cases_dir.is_dir():
+        raise ValueError(f"benchmark cases directory does not exist: {cases_dir}")
+    manifest_paths = sorted(cases_dir.glob("*/case.json"))
+    if not manifest_paths:
+        raise ValueError(f"benchmark cases directory is empty: {cases_dir}")
     wanted = set(selected or [])
     cases: list[BenchmarkCase] = []
-    for manifest_path in sorted(CASES_DIR.glob("*/case.json")):
+    for manifest_path in manifest_paths:
         manifest = read_json(manifest_path)
+        case_id = manifest.get("id") if isinstance(manifest, dict) else None
+        if not isinstance(case_id, str) or CASE_ID.fullmatch(case_id) is None:
+            raise ValueError(
+                f"invalid benchmark case id in {manifest_path}: {case_id!r}"
+            )
+        if manifest_path.parent.name != case_id:
+            raise ValueError(
+                f"benchmark case directory {manifest_path.parent.name!r} "
+                f"does not match id {case_id!r}"
+            )
         case = BenchmarkCase(manifest_path.parent, manifest)
         if not wanted or case.id in wanted:
             cases.append(case)
@@ -72,6 +108,40 @@ def discover_cases(selected: Iterable[str] | None = None) -> list[BenchmarkCase]
     if missing:
         raise ValueError(f"unknown benchmark cases: {', '.join(sorted(missing))}")
     return cases
+
+
+def resolve_relative_file(root: Path, value: str, label: str) -> Path:
+    root = root.resolve()
+    candidate = Path(value)
+    if not value or candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError(f"{label} must be a repository-relative file: {value}")
+    resolved = (root / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{label} escapes its workspace: {value}") from exc
+    return resolved
+
+
+def display_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
+def verification_commands(text: str) -> list[str]:
+    commands: list[str] = []
+    in_verify = False
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            in_verify = line.strip() == "verify:"
+            continue
+        if in_verify:
+            match = VERIFY_LINE.fullmatch(line)
+            if match:
+                commands.append(match.group(1))
+    return commands
 
 
 def text_metrics(text: str) -> dict[str, int]:
@@ -205,27 +275,176 @@ def render_static_markdown(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_grader(case: BenchmarkCase, workspace: Path) -> dict[str, Any]:
+def run_process_capture(
+    command: list[str],
+    cwd: Path,
+    timeout: int,
+    environment: dict[str, str],
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(input_text, timeout=timeout)
+    except BaseException:
+        stop_process_group(process)
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def run_restricted_sandbox(
+    command: list[str],
+    cwd: Path,
+    readable_roots: Iterable[Path],
+    writable_roots: Iterable[Path] = (),
+    timeout: int = 30,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    cwd = cwd.resolve()
+    unshare = shutil.which("unshare")
+    if unshare is None:
+        raise RuntimeError("restricted benchmark execution requires unshare")
+    access = {
+        path.resolve(): "read"
+        for path in (cwd, *readable_roots)
+    }
+    access.update({path.resolve(): "write" for path in writable_roots})
+    with tempfile.TemporaryDirectory(prefix="semantic-spec-sandbox-") as directory:
+        codex_home = Path(directory)
+        filesystem = [
+            '":minimal" = "read"',
+            '"/proc" = "none"',
+            '"/sys" = "none"',
+            *(
+                f"{json.dumps(str(path))} = {json.dumps(mode)}"
+                for path, mode in sorted(access.items())
+            ),
+        ]
+        (codex_home / "config.toml").write_text(
+            "default_permissions = \"benchmark-grader\"\n\n"
+            "[permissions.benchmark-grader.filesystem]\n"
+            + "\n".join(filesystem)
+            + "\n\n[permissions.benchmark-grader.network]\n"
+            "enabled = false\n",
+            encoding="utf-8",
+        )
+        environment = safe_environment()
+        environment.update({
+            "CODEX_HOME": str(codex_home),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        })
+        return run_process_capture(
+            [
+                unshare,
+                "--mount",
+                "--pid",
+                "--net",
+                "--fork",
+                "--kill-child",
+                "--mount-proc",
+                "--",
+                "codex",
+                "sandbox",
+                "--permission-profile",
+                "benchmark-grader",
+                "--cd",
+                str(cwd),
+                "--",
+                *command,
+            ],
+            cwd,
+            timeout,
+            environment,
+            input_text,
+        )
+
+
+def run_grader(
+    case: BenchmarkCase,
+    workspace: Path,
+    *,
+    trusted: bool = False,
+) -> dict[str, Any]:
+    workspace = workspace.resolve()
     command = [
         sys.executable,
         str(BENCHMARKS / "grader.py"),
         str(case.path),
         str(workspace),
     ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-    )
+    if not trusted:
+        command.append("--untrusted")
+    environment = safe_environment()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run_process_capture(command, workspace, 120, environment)
     if completed.returncode != 0:
         raise RuntimeError(
             f"grader failed for {case.id}: {completed.stdout.strip()} "
             f"{completed.stderr.strip()}"
         )
     return json.loads(completed.stdout)
+
+
+def run_verification(
+    case: BenchmarkCase,
+    workspace: Path,
+    *,
+    trusted: bool = False,
+) -> dict[str, Any] | None:
+    declared = case.manifest.get("verification_command")
+    if not declared:
+        return None
+    command = shlex.split(str(declared))
+    if not command:
+        raise ValueError(f"{case.id}: verification command is empty")
+    with tempfile.TemporaryDirectory(prefix="semantic-spec-verify-") as directory:
+        verification_workspace = Path(directory) / "workspace"
+        shutil.copytree(
+            workspace.resolve(),
+            verification_workspace,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
+        )
+        environment = safe_environment()
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        completed = (
+            run_process_capture(command, verification_workspace, 30, environment)
+            if trusted
+            else run_restricted_sandbox(
+                command,
+                verification_workspace,
+                [verification_workspace],
+                [verification_workspace],
+            )
+        )
+    return {
+        "command": str(declared),
+        "return_code": completed.returncode,
+        "stdout_tail": completed.stdout[-2000:],
+        "stderr_tail": completed.stderr[-2000:],
+    }
+
+
+def empty_grade(case: BenchmarkCase) -> dict[str, Any]:
+    total = len(read_json(case.path / "tests.json")["tests"])
+    return {
+        "passed": 0,
+        "total": total,
+        "pass_rate": 0.0,
+        "acceptance_passed": 0,
+        "acceptance_total": 0,
+        "acceptance_pass_rate": 0.0,
+        "task_success": False,
+        "failures": [],
+    }
 
 
 def block_ids(text: str, block: str, prefix: str) -> list[str]:
@@ -265,7 +484,11 @@ def validate_semantic_text(case: BenchmarkCase, semantic: str) -> list[str]:
         errors.append(f"{case.id}: every test must map to an acceptance id")
     defined_acceptance_list = block_ids(semantic, "acceptance", "A")
     defined_acceptance_ids = set(defined_acceptance_list)
-    duplicates = sorted({item for item in defined_acceptance_list if defined_acceptance_list.count(item) > 1})
+    duplicates = sorted({
+        item
+        for item in defined_acceptance_list
+        if defined_acceptance_list.count(item) > 1
+    })
     if duplicates:
         errors.append(f"{case.id}: duplicate acceptance ids: {', '.join(duplicates)}")
     unmapped = defined_acceptance_ids - acceptance_ids
@@ -273,25 +496,91 @@ def validate_semantic_text(case: BenchmarkCase, semantic: str) -> list[str]:
         errors.append(
             f"{case.id}: acceptance ids without tests: {', '.join(sorted(unmapped))}"
         )
-    for acceptance_id in sorted(item for item in acceptance_ids if item):
-        if acceptance_id not in semantic:
-            errors.append(f"{case.id}: semantic spec lacks {acceptance_id}")
+    missing_acceptance = {
+        item for item in acceptance_ids if item
+    } - defined_acceptance_ids
+    if missing_acceptance:
+        errors.append(
+            f"{case.id}: acceptance block lacks "
+            f"{', '.join(sorted(missing_acceptance))}"
+        )
+    return errors
+
+
+def validate_execution_packet_artifact(
+    case: BenchmarkCase,
+    packet_path: Path,
+) -> list[str]:
+    errors: list[str] = []
+    text = packet_path.read_text(encoding="utf-8")
+    verification_command = case.manifest.get("verification_command")
+    if not isinstance(verification_command, str) or not verification_command.strip():
+        errors.append(f"{case.id}: execution packet requires verification_command")
+    elif verification_command not in verification_commands(text):
+        errors.append(f"{case.id}: packet lacks exact verification command")
+    for pattern in case.manifest.get("packet_required_patterns", []):
+        if re.search(pattern, text, re.MULTILINE | re.IGNORECASE) is None:
+            errors.append(f"{case.id}: packet lacks required pattern {pattern}")
+
+    checked = subprocess.run(
+        [
+            sys.executable,
+            str(EXECUTION_PACKET_CHECK),
+            str(case.path / "starter"),
+            str(packet_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if checked.returncode != 0:
+        detail = checked.stdout.strip() or checked.stderr.strip()
+        try:
+            payload = json.loads(checked.stdout)
+            detail = "; ".join(str(item) for item in payload.get("errors", [])) or detail
+        except json.JSONDecodeError:
+            pass
+        errors.append(f"{case.id}: execution packet check failed: {detail}")
     return errors
 
 
 def validate_case(case: BenchmarkCase) -> list[str]:
     errors: list[str] = []
+    if CASE_ID.fullmatch(case.id) is None:
+        return [f"invalid benchmark case id: {case.id!r}"]
+    if case.path.name != case.id:
+        return [
+            f"benchmark case directory {case.path.name!r} does not match id {case.id!r}"
+        ]
     required = [
         case.path / "case.json",
         case.path / "baseline.md",
         case.path / "semantic.spec.ctx",
         case.path / "tests.json",
-        case.path / "starter" / case.manifest.get("entrypoint", ""),
-        case.path / "reference" / case.manifest.get("entrypoint", ""),
     ]
     for path in required:
         if not path.is_file():
-            errors.append(f"{case.id}: missing {path.relative_to(ROOT)}")
+            errors.append(f"{case.id}: missing {display_path(path)}")
+    for directory in (case.path / "starter", case.path / "reference"):
+        if not directory.is_dir():
+            errors.append(f"{case.id}: missing {display_path(directory)}")
+    if errors:
+        return errors
+
+    manifest_entrypoint = str(case.manifest.get("entrypoint", ""))
+    try:
+        starter_entrypoint = resolve_relative_file(
+            case.path / "starter", manifest_entrypoint, f"{case.id} entrypoint"
+        )
+        reference_entrypoint = resolve_relative_file(
+            case.path / "reference", manifest_entrypoint, f"{case.id} entrypoint"
+        )
+    except ValueError as exc:
+        return [str(exc)]
+    for path in (starter_entrypoint, reference_entrypoint):
+        if not path.is_file():
+            errors.append(f"{case.id}: missing {display_path(path)}")
     if errors:
         return errors
 
@@ -299,18 +588,65 @@ def validate_case(case: BenchmarkCase) -> list[str]:
     errors.extend(validate_semantic_text(case, semantic))
 
     suite = read_json(case.path / "tests.json")
+    tested_entrypoints = {
+        str(test.get("entrypoint", case.manifest["entrypoint"]))
+        for test in suite["tests"]
+    }
+    for entrypoint in sorted(tested_entrypoints):
+        for variant in ("starter", "reference"):
+            try:
+                path = resolve_relative_file(
+                    case.path / variant,
+                    entrypoint,
+                    f"{case.id} tested entrypoint",
+                )
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
+            if not path.is_file():
+                errors.append(
+                    f"{case.id}: missing tested {variant} entrypoint "
+                    f"{display_path(path)}"
+                )
+    if errors:
+        return errors
     acceptance_ids = {test.get("acceptance") for test in suite["tests"]}
     baseline = case.spec_path("baseline").read_text(encoding="utf-8")
     for acceptance_id in sorted(item for item in acceptance_ids if item):
         if acceptance_id not in baseline:
             errors.append(f"{case.id}: baseline lacks {acceptance_id}")
 
-    reference_grade = run_grader(case, case.path / "reference")
+    with tempfile.TemporaryDirectory(prefix=f"semantic-spec-reference-{case.id}-") as directory:
+        reference_workspace = Path(directory) / "workspace"
+        shutil.copytree(case.path / "starter", reference_workspace)
+        shutil.copytree(
+            case.path / "reference",
+            reference_workspace,
+            dirs_exist_ok=True,
+        )
+        reference_grade = run_grader(case, reference_workspace, trusted=True)
+        verified = run_verification(case, reference_workspace, trusted=True)
+        if verified and verified["return_code"] != 0:
+            errors.append(
+                f"{case.id}: reference verification failed: "
+                f"{verified['stdout_tail'].strip()} "
+                f"{verified['stderr_tail'].strip()}"
+            )
     if reference_grade["passed"] != reference_grade["total"]:
         errors.append(f"{case.id}: reference solution does not pass all tests")
-    starter_grade = run_grader(case, case.path / "starter")
+    starter_grade = run_grader(case, case.path / "starter", trusted=True)
     if starter_grade["passed"] == starter_grade["total"]:
         errors.append(f"{case.id}: starter already passes all tests")
+    verification_command = case.manifest.get("verification_command")
+    if verification_command:
+        semantic = case.spec_path("semantic").read_text(encoding="utf-8")
+        if str(verification_command) not in verification_commands(semantic):
+            errors.append(f"{case.id}: semantic spec lacks verification command")
+        starter_verification = run_verification(
+            case, case.path / "starter", trusted=True
+        )
+        if starter_verification and starter_verification["return_code"] == 0:
+            errors.append(f"{case.id}: starter already passes visible verification")
     return errors
 
 
@@ -345,13 +681,22 @@ def load_semantic_specs(
         text = path.read_text(encoding="utf-8")
         specs[case.id] = text
         errors.extend(validate_semantic_text(case, text))
+        if case.manifest.get("execution_packet"):
+            errors.extend(validate_execution_packet_artifact(case, path))
     if errors:
         raise ValueError("generated semantic validation failed:\n" + "\n".join(errors))
     return specs
 
 
 def safe_workspace(case: BenchmarkCase, root: Path) -> Path:
-    workspace = root / case.id
+    if CASE_ID.fullmatch(case.id) is None:
+        raise ValueError(f"invalid benchmark case id: {case.id!r}")
+    root = root.resolve()
+    workspace = (root / case.id).resolve()
+    try:
+        workspace.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"benchmark workspace escapes root: {case.id!r}") from exc
     if workspace.exists():
         raise RuntimeError(f"refusing to overwrite workspace: {workspace}")
     shutil.copytree(
@@ -365,6 +710,59 @@ def safe_workspace(case: BenchmarkCase, root: Path) -> Path:
         check=True,
         capture_output=True,
         text=True,
+    )
+    subprocess.run(
+        ["git", "add", "--all"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    identity: dict[str, str] = {}
+    for key, field in (("user.name", "name"), ("user.email", "email")):
+        configured = subprocess.run(
+            ["git", "config", "--get", key],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if not configured:
+            placeholder = "%an" if field == "name" else "%ae"
+            configured = subprocess.run(
+                ["git", "show", "-s", f"--format={placeholder}", "HEAD"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        identity[field] = configured
+    commit_environment = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": "2000-01-01T00:00:00Z",
+        "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z",
+    }
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            f"user.name={identity['name']}",
+            "-c",
+            f"user.email={identity['email']}",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "commit",
+            "--quiet",
+            "--message",
+            "Benchmark starter snapshot",
+        ],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=commit_environment,
     )
     return workspace
 
@@ -384,6 +782,8 @@ def benchmark_prompt(spec: str) -> str:
 def parse_codex_events(stdout: str) -> dict[str, Any]:
     usage: dict[str, int] = {}
     tool_calls: dict[str, int] = {}
+    command_log: list[dict[str, Any]] = []
+    command_categories = {name: 0 for name in COMMAND_CATEGORY_PATTERNS}
     thread_id: str | None = None
     final_message = ""
     event_errors: list[str] = []
@@ -415,6 +815,14 @@ def parse_codex_events(stdout: str) -> dict[str, Any]:
                 "web_search",
             }:
                 tool_calls[item_type] = tool_calls.get(item_type, 0) + 1
+                if item_type == "command_execution":
+                    command = str(item.get("command", ""))
+                    command_log.append({
+                        "command": command[:2000],
+                        "exit_code": item.get("exit_code"),
+                    })
+                    for name, pattern in COMMAND_CATEGORY_PATTERNS.items():
+                        command_categories[name] += bool(pattern.search(command))
 
     if usage:
         usage = {key: int(value) for key, value in usage.items() if isinstance(value, int)}
@@ -425,6 +833,8 @@ def parse_codex_events(stdout: str) -> dict[str, Any]:
         "usage": usage,
         "tool_calls": tool_calls,
         "tool_call_total": sum(tool_calls.values()),
+        "command_log": command_log,
+        "command_categories": command_categories,
         "thread_id": thread_id,
         "final_message": final_message[-2000:],
         "event_errors": event_errors,
@@ -519,8 +929,7 @@ def run_codex(
 
 def run_mock(case: BenchmarkCase, workspace: Path) -> dict[str, Any]:
     started = time.monotonic()
-    entrypoint = case.manifest["entrypoint"]
-    shutil.copy2(case.path / "reference" / entrypoint, workspace / entrypoint)
+    shutil.copytree(case.path / "reference", workspace, dirs_exist_ok=True)
     return {
         "return_code": 0,
         "duration_seconds": round(time.monotonic() - started, 6),
@@ -583,7 +992,9 @@ def create_run_document(
     args: argparse.Namespace,
     cases: list[BenchmarkCase],
     semantic_specs: dict[str, str],
+    cases_dir: Path,
 ) -> dict[str, Any]:
+    corpus = discover_cases(cases_dir=cases_dir)
     return {
         "schema_version": 1,
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -601,15 +1012,21 @@ def create_run_document(
             "git_commit": git_commit(),
         },
         "cases": [case.id for case in cases],
+        "case_suite": cases_dir.name,
+        "full_corpus": {case.id for case in cases} == {case.id for case in corpus},
         "semantic_source": "generated" if args.semantic_dir else "curated",
-        "oracle_exposure": "possible: grader files are outside the workspace but not container-isolated",
+        "oracle_exposure": (
+            "reduced: hidden tests and hidden expected outputs stay in the grader "
+            "parent; visible smoke assertions are shared equally across arms"
+        ),
         "static": static_rows(cases, semantic_specs),
         "results": [],
     }
 
 
 def execute_benchmark(args: argparse.Namespace) -> Path:
-    cases = discover_cases(args.case)
+    cases_dir = (args.cases_dir or CASES_DIR).resolve()
+    cases = discover_cases(args.case, cases_dir)
     errors = validate(cases)
     if errors:
         raise RuntimeError("benchmark validation failed:\n" + "\n".join(errors))
@@ -621,7 +1038,7 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
     output = output.resolve()
     if output.exists() and not args.force:
         raise RuntimeError(f"refusing to overwrite result: {output}; pass --force to replace it")
-    document = create_run_document(args, cases, semantic_specs)
+    document = create_run_document(args, cases, semantic_specs, cases_dir)
     pairs = [
         (case, repetition)
         for case in cases
@@ -659,6 +1076,19 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                 f"[{index}/{len(jobs)}] {case.id} {variant} repetition={repetition}",
                 flush=True,
             )
+            provider_result = {
+                "return_code": None,
+                "duration_seconds": None,
+                "usage": {},
+                "tool_calls": {},
+                "tool_call_total": None,
+                "event_errors": ["provider did not start"],
+                "stderr_tail": "",
+            }
+            provider_completed = False
+            verification = None
+            grade = empty_grade(case)
+            run_errors: list[str] = []
             try:
                 if args.provider == "codex":
                     provider_result = run_codex(
@@ -670,34 +1100,48 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                     )
                 else:
                     provider_result = run_mock(case, workspace)
-                grade = run_grader(case, workspace)
-                error = None
+                provider_completed = True
             except subprocess.TimeoutExpired:
-                provider_result = {
-                    "return_code": None,
-                    "duration_seconds": args.timeout_seconds,
-                    "usage": {},
-                    "tool_calls": {},
-                    "tool_call_total": None,
-                    "event_errors": ["provider timeout"],
-                    "stderr_tail": "",
-                }
-                total = len(read_json(case.path / "tests.json")["tests"])
-                grade = {"passed": 0, "total": total, "pass_rate": 0.0, "acceptance_passed": 0, "acceptance_total": 0, "acceptance_pass_rate": 0.0, "task_success": False, "failures": []}
-                error = "provider timeout"
+                provider_result["duration_seconds"] = args.timeout_seconds
+                provider_result["event_errors"] = ["provider timeout"]
+                run_errors.append("provider timeout")
             except Exception as exc:  # noqa: BLE001 - preserve failed run and continue
-                provider_result = {
-                    "return_code": None,
-                    "duration_seconds": None,
-                    "usage": {},
-                    "tool_calls": {},
-                    "tool_call_total": None,
-                    "event_errors": [],
-                    "stderr_tail": "",
-                }
-                total = len(read_json(case.path / "tests.json")["tests"])
-                grade = {"passed": 0, "total": total, "pass_rate": 0.0, "acceptance_passed": 0, "acceptance_total": 0, "acceptance_pass_rate": 0.0, "task_success": False, "failures": []}
-                error = f"{type(exc).__name__}: {exc}"
+                provider_result["event_errors"] = [f"{type(exc).__name__}: {exc}"]
+                run_errors.append(f"provider {type(exc).__name__}: {exc}")
+
+            if provider_completed:
+                if provider_result.get("return_code") != 0:
+                    run_errors.append(
+                        f"provider exited with {provider_result.get('return_code')}"
+                    )
+                run_errors.extend(provider_result.get("event_errors", []))
+                trusted = args.provider == "mock"
+                verification_failed = False
+                try:
+                    verification = run_verification(
+                        case, workspace, trusted=trusted
+                    )
+                    verification_failed = bool(
+                        verification and verification["return_code"] != 0
+                    )
+                    if verification_failed:
+                        run_errors.append("verification command failed")
+                except subprocess.TimeoutExpired:
+                    verification_failed = True
+                    run_errors.append("verification timeout")
+                except Exception as exc:  # noqa: BLE001 - preserve provider telemetry
+                    verification_failed = True
+                    run_errors.append(f"verification {type(exc).__name__}: {exc}")
+                try:
+                    grade = run_grader(case, workspace, trusted=trusted)
+                except subprocess.TimeoutExpired:
+                    run_errors.append("grader timeout")
+                except Exception as exc:  # noqa: BLE001 - preserve provider telemetry
+                    run_errors.append(f"grader {type(exc).__name__}: {exc}")
+                if verification_failed:
+                    grade["task_success"] = False
+
+            error = "; ".join(run_errors) if run_errors else None
 
             usage = provider_result.get("usage", {})
             result = {
@@ -714,6 +1158,7 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                     "fixture_sha256": tree_sha256(case.path),
                 },
                 "provider": provider_result,
+                "verification": verification,
                 "grade": grade,
                 "cost_usd": estimate_cost(usage, args.pricing),
                 "error": error,
@@ -786,6 +1231,15 @@ def aggregate_variant(results: list[dict[str, Any]], variant: str) -> dict[str, 
             for result in selected
             if result["provider"].get("tool_call_total") is not None
         ]),
+        "total_tool_calls": sum(
+            result["provider"]["tool_call_total"]
+            for result in selected
+            if result["provider"].get("tool_call_total") is not None
+        ),
+        "total_command_executions": sum(
+            result["provider"].get("tool_calls", {}).get("command_execution", 0)
+            for result in selected
+        ),
         "total_cost_usd": round(sum(
             result["cost_usd"] for result in selected if result["cost_usd"] is not None
         ), 6) if any(result["cost_usd"] is not None for result in selected) else None,
@@ -898,7 +1352,9 @@ def render_report(document: dict[str, Any]) -> str:
     complete_pairs = len(results) == (
         len(document["cases"]) * document["repetitions"] * len(VARIANTS)
     )
-    full_corpus = set(document["cases"]) == {case.id for case in discover_cases()}
+    full_corpus = bool(document.get("full_corpus", (
+        set(document["cases"]) == {case.id for case in discover_cases()}
+    )))
     credible = (
         document["provider"] != "mock"
         and bool(document.get("model"))
@@ -919,6 +1375,7 @@ def render_report(document: dict[str, Any]) -> str:
         f"Model: `{document.get('model') or 'provider default'}`  ",
         f"Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`  ",
         f"Cases: {len(document['cases'])}  ",
+        f"Case suite: `{document.get('case_suite', 'cases')}`  ",
         f"Repetitions: {document['repetitions']}  ",
         f"Semantic source: `{document.get('semantic_source', 'curated')}`",
         "",
@@ -955,6 +1412,8 @@ def render_report(document: dict[str, Any]) -> str:
         ("Uncached input tokens", "total_uncached_input_tokens"),
         ("Output tokens", "total_output_tokens"),
         ("Agent wall time", "total_duration_seconds"),
+        ("Shell command executions", "total_command_executions"),
+        ("Tool calls", "total_tool_calls"),
     ]
     lines.extend([
         "",
@@ -1065,8 +1524,9 @@ def render_report(document: dict[str, Any]) -> str:
         f"- Results cover one model (`{document.get('model') or 'provider default'}`) and "
         f"one reasoning effort (`{document.get('reasoning_effort') or 'provider default'}`).",
         "- The benchmark excludes the one-time cost of creating or reviewing a semantic spec.",
-        "- Acceptance tests are held outside the agent workspace, but the runner does not use "
-        "a container and therefore cannot prove oracle isolation against a hostile agent.",
+        "- Hidden tests and hidden expected outputs stay outside the solution process. "
+        "Visible smoke assertions are exposed equally to both arms. Each solution call runs "
+        "in a network-disabled read-only sandbox, but this is not a full VM boundary.",
         "- More fixtures, models, and repetitions are required before making a general token "
         "or latency claim.",
         "",
@@ -1091,9 +1551,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="validate all cases")
     validate_parser.add_argument("--case", action="append", default=[])
+    validate_parser.add_argument("--cases-dir", type=Path)
 
     static_parser = subparsers.add_parser("static", help="measure document sizes")
     static_parser.add_argument("--case", action="append", default=[])
+    static_parser.add_argument("--cases-dir", type=Path)
     static_parser.add_argument("--semantic-dir", type=Path)
     static_parser.add_argument(
         "--token-encoding",
@@ -1110,6 +1572,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["minimal", "low", "medium", "high", "xhigh"],
     )
     run_parser.add_argument("--case", action="append", default=[])
+    run_parser.add_argument("--cases-dir", type=Path)
     run_parser.add_argument(
         "--semantic-dir",
         type=Path,
@@ -1136,7 +1599,7 @@ def main() -> int:
 
     try:
         if args.command == "validate":
-            cases = discover_cases(args.case)
+            cases = discover_cases(args.case, args.cases_dir)
             errors = validate(cases)
             if errors:
                 print("\n".join(errors), file=sys.stderr)
@@ -1144,7 +1607,7 @@ def main() -> int:
             print(f"validated {len(cases)} benchmark cases")
             return 0
         if args.command == "static":
-            cases = discover_cases(args.case)
+            cases = discover_cases(args.case, args.cases_dir)
             semantic_specs = load_semantic_specs(cases, args.semantic_dir)
             rows = static_rows(
                 cases,

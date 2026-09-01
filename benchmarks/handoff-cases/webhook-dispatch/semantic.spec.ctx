@@ -1,0 +1,34 @@
+spec
+goal: verify, normalize, and deduplicate supported webhooks without mutating inputs
+entrypoint: solution.py -> handle_webhook
+scope:
+  edit: webhooks/signature.py,webhooks/events.py,webhooks/dedup.py,webhooks/handler.py
+
+flow:
+  R1 signature: verify_signature before event access; failure -> exactly {ok:false,status:401,error:"invalid_signature"}
+  R2 event: normalize_event; ValueError -> exactly {ok:false,status:400,error:"invalid_event"}
+  R3 type: normalized type outside invoice.paid|invoice.failed -> exactly {ok:false,status:422,error:"unsupported_event",type:normalized_type}; do not record
+  R4 dedup: find first delivery by normalized event_id
+  R5 existing -> replay
+  R6 missing -> append new record
+
+helpers:
+  verify_signature: string inputs only; exact /^sha256=[0-9a-f]{64}$/; HMAC-SHA256(UTF8 secret,UTF8 body); safe digest compare; malformed -> false,never raise
+  normalize_event: trimmed non-empty string event["id"],event["type"] else ValueError "invalid webhook event"; deep copy with trimmed fields and arbitrary nested fields retained
+  find_delivery: deep copy first record where event_id matches else None
+  append_delivery: deep-copy list and record; preserve inputs
+
+results:
+  replay: exactly {ok:true,status:200,replayed:true,delivery:existing,deliveries:unchanged_deep_copy}
+  new record: exactly {event_id:normalized_id,type:normalized_type}
+  new success: exactly {ok:true,status:200,replayed:false,delivery:record,deliveries:updated}
+  preserve all inputs; add no timestamps,hashes,generated IDs
+
+verify:
+  V1: `python3 -m unittest -q test_smoke.py`
+
+acceptance:
+  A1: R1,verify_signature
+  A2: R2,R3,normalize_event
+  A3: R4,R5,find_delivery,replay
+  A4: R6,append_delivery,new success

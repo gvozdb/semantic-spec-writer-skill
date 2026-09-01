@@ -13,6 +13,15 @@ It measures four different things:
 4. **Lifecycle cost**: semantic-spec authoring tokens plus repeated implementation
    tokens and measured break-even reuse.
 
+An additional execution-packet experiment uses three arms on multi-file cases:
+
+1. conventional Markdown;
+2. Semantic v1 with a compact edit scope;
+3. compiled Packet v2 with file-owned `do` actions, source anchors, and a stale-route hash.
+
+Packet v2 versus Semantic v1 is the primary comparison. Markdown is secondary;
+otherwise ordinary semantic compression could be mistaken for a packet benefit.
+
 Static compression alone is not evidence that a specification is useful. The
 implementation track checks whether an agent can still produce behavior that
 passes deterministic tests.
@@ -22,15 +31,23 @@ passes deterministic tests.
 - Both variants describe the same task and use the same starter workspace.
 - Runs are paired by case and repetition, then shuffled with a recorded seed.
 - Every run gets a fresh isolated workspace containing only starter files.
-- Graders and reference solutions remain outside the agent workspace. They are
-  held out by convention, not protected by a container, so the result records
-  that oracle exposure is possible.
+- Hidden tests and hidden expected outputs remain in the grader parent. Each
+  agent-written solution call runs separately in a network-disabled, read-only
+  Codex sandbox that can read the workspace runtime but not `tests.json`. Visible
+  `test_smoke.py` assertions and the exact verification command are intentionally
+  exposed equally to every arm. This is stronger than convention-only hiding,
+  but it is not a full VM boundary.
+- Untrusted grading and verification are additionally wrapped in Linux PID,
+  mount, and network namespaces via `unshare`. The private PID namespace prevents
+  `/proc` from exposing the parent grader or host-process environments. These
+  runs fail closed when `unshare` is unavailable.
 - Codex runs use `--ephemeral`, `--ignore-user-config`, `--ignore-rules`, and
   `--sandbox workspace-write`.
 - Provider subprocesses receive an allowlisted environment that excludes API
   keys and unrelated server variables. Codex reuses its local authentication.
 - The JSON result records environment versions, model, seed, raw usage totals,
-  acceptance results, and failures.
+  acceptance results, exact verification status, command-category telemetry,
+  and failures.
 - A publishable run requires every pair and at least three repetitions. The
   report labels smaller or mock runs as smoke tests.
 - Generated-spec runs keep every failed attempt and include all retry usage in
@@ -63,6 +80,13 @@ python3 -m venv /tmp/semantic-spec-tokenizer
 python3 benchmarks/benchmark.py validate
 python3 benchmarks/benchmark.py static --check
 python3 -m unittest discover -s benchmarks/tests -v
+```
+
+Validate the separate multi-file packet suite:
+
+```bash
+python3 benchmarks/handoff.py validate
+python3 benchmarks/handoff.py static --token-encoding o200k_base
 ```
 
 Validation proves that every reference implementation passes, every starter
@@ -119,6 +143,26 @@ python3 benchmarks/benchmark.py run \
   --case email-routing \
   --repetitions 1
 ```
+
+Run the three-arm execution-packet benchmark independently:
+
+```bash
+python3 benchmarks/handoff.py run \
+  --provider codex \
+  --model YOUR_MODEL \
+  --reasoning-effort medium \
+  --repetitions 3 \
+  --output benchmarks/results/handoff-r3.json
+
+python3 benchmarks/handoff.py report \
+  benchmarks/results/handoff-r3.json \
+  --output HANDOFF_BENCHMARK.md
+```
+
+This suite records raw command strings and classifies coarse discovery, read,
+and verification command events. A command event can contain multiple shell
+operations, so those counts are directional and are reported separately from
+provider token telemetry.
 
 Use `--keep-workspaces` only when failed implementations need inspection.
 Without it, generated workspaces are removed after the run.

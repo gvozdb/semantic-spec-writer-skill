@@ -59,6 +59,8 @@ def create_document(
     cases: list[core.BenchmarkCase],
     semantic_specs: dict[str, str],
 ) -> dict[str, Any]:
+    cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
+    corpus = core.discover_cases(cases_dir=cases_dir)
     return {
         "schema_version": 1,
         "kind": "semantic-spec-context-load",
@@ -70,6 +72,8 @@ def create_document(
         "repetitions": args.repetitions,
         "seed": args.seed,
         "cases": [case.id for case in cases],
+        "case_suite": cases_dir.name,
+        "full_corpus": {case.id for case in cases} == {case.id for case in corpus},
         "semantic_source": "generated" if args.semantic_dir else "curated",
         "environment": {
             "platform": platform.platform(),
@@ -83,7 +87,8 @@ def create_document(
 
 
 def run(args: argparse.Namespace) -> Path:
-    cases = core.discover_cases(args.case)
+    cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
+    cases = core.discover_cases(args.case, cases_dir)
     fixture_errors = core.validate(cases)
     if fixture_errors:
         raise RuntimeError("benchmark validation failed:\n" + "\n".join(fixture_errors))
@@ -218,9 +223,9 @@ def report(document: dict[str, Any]) -> str:
     input_summary = core.paired_summary(results, "input_tokens")
     uncached_summary = core.paired_summary(results, "uncached_input_tokens")
     complete = len(results) == len(document["cases"]) * document["repetitions"] * 2
-    full_corpus = set(document["cases"]) == {
-        case.id for case in core.discover_cases()
-    }
+    full_corpus = bool(document.get("full_corpus", (
+        set(document["cases"]) == {case.id for case in core.discover_cases()}
+    )))
     credible = bool(
         document["provider"] != "mock"
         and document.get("model")
@@ -325,6 +330,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["minimal", "low", "medium", "high", "xhigh"],
     )
     run_parser.add_argument("--case", action="append", default=[])
+    run_parser.add_argument("--cases-dir", type=Path)
     run_parser.add_argument("--semantic-dir", type=Path)
     run_parser.add_argument("--repetitions", type=int, default=1)
     run_parser.add_argument("--seed", type=int, default=20260901)

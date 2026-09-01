@@ -1,0 +1,24 @@
+spec
+goal: strict typed setting precedence; preserve inputs
+entrypoint: solution.py -> resolve_setting
+
+route:
+  edit: settings/layers.py::def select_layer
+    do: first layer containing name from request>tenant>global else default; null stops fallback; return exactly {source,raw:deep_copy(value)}
+  edit: settings/coercion.py::def coerce_value
+    do: reject kind outside bool|int|string before null with ValueError "unsupported setting kind"; null -> null
+    do: bool accepts bool or trimmed case-insensitive true|false; int accepts int not bool or trimmed /^-?[0-9]+$/; string accepts string and trims including empty
+    do: invalid -> ValueError "invalid <kind> setting"; no floats
+  edit: settings/service.py::def resolve_setting
+    do: select then coerce; return exactly {name:original_name,value,source}; no mutable input alias
+  expand: edit all targets; inspect routed files first; expand only on code/import contradiction
+
+basis: route-sha256:3de7fc582854c67020360424bc481912ebb962b76671c25b28ac4d474a405555
+
+verify:
+  V1: `python3 -m unittest -q test_smoke.py`
+
+acceptance:
+  A1: precedence/presence/deep copy
+  A2: strict coercion/errors
+  A3: exact result and input preservation

@@ -1,0 +1,18 @@
+{
+  "id": "tenant-settings",
+  "title": "Layered tenant setting resolution",
+  "entrypoint": "solution.py",
+  "verification_command": "python3 -m unittest -q test_smoke.py",
+  "execution_packet": true,
+  "semantic_required_patterns": [
+    "resolve_setting",
+    "settings/service\\.py",
+    "settings/layers\\.py",
+    "settings/coercion\\.py"
+  ],
+  "packet_required_patterns": [
+    "route:",
+    "basis: route-sha256:",
+    "expand:"
+  ]
+}

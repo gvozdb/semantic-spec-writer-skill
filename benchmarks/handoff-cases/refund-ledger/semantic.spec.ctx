@@ -1,0 +1,42 @@
+spec
+goal: implement an idempotent refund workflow without mutating caller state
+entrypoint: solution.py -> execute_refund
+scope:
+  edit: billing/ledger.py,billing/events.py,billing/service.py
+
+contract:
+  execute_refund(order,request,ledger,events) -> exact success|error maps
+  inputs: JSON-compatible; preserve all inputs and unrelated order fields
+
+validation_order:
+  R1: trimmed non-empty request["key"] | {ok:false,error:"invalid_key"}
+  R2: trimmed non-empty request["refund_id"] | {ok:false,error:"invalid_refund_id"}
+  R3: trimmed non-empty request["reason"] | {ok:false,error:"invalid_reason"}
+  R4: type(request["amount_cents"]) is int and >0 | {ok:false,error:"invalid_amount"}
+  R5: order["status"] in [paid,shipped] | {ok:false,error:"order_not_refundable"}
+  R6: amount_cents<=paid_cents-refunded_cents | {ok:false,error:"amount_exceeds_remaining"}
+  R7: idempotency after R1-R6
+
+idempotency:
+  scope: trimmed key + order["account_id"]
+  find_by_key(entries,account_id,key): deep copy first scoped match else None
+  existing["order_id"]==order["id"] and same refund_id,amount_cents -> replay existing entry; deep-copy unchanged order/ledger/events
+  any mismatch -> exactly {ok:false,error:"idempotency_conflict"}
+
+new_refund:
+  entry: {account_id:order["account_id"],order_id:order["id"],key,refund_id,amount_cents}
+  append_entry: deep-copy list and entry; preserve inputs
+  order: deep copy; refunded_cents += amount_cents
+  event: build_refund_event(entry,reason) -> exactly {type:"refund.created",account_id,order_id,refund_id,amount_cents,reason:trimmed_reason}
+  success: exactly {ok:true,replayed:false,refund:entry,order:updated_order,ledger:updated_ledger,events:updated_events}
+  replay: same keys; replayed:true; no state changes or event
+  add no timestamps/generated identifiers
+
+verify:
+  V1: `python3 -m unittest -q test_smoke.py`
+
+acceptance:
+  A1: R1-R6
+  A2: idempotency
+  A3: new_refund helpers preserve inputs
+  A4: exact success shapes and retained fields
