@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import platform
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -20,6 +23,7 @@ BENCHMARKS = Path(__file__).resolve().parent
 ROOT = BENCHMARKS.parent
 SKILL_DIR = ROOT / "skills" / "semantic-spec-writer"
 SKILL = SKILL_DIR / "SKILL.md"
+MAX_GENERATED_ARTIFACT_BYTES = 2_000_000
 sys.path.insert(0, str(BENCHMARKS))
 import benchmark as core  # noqa: E402
 
@@ -33,17 +37,19 @@ def generation_prompt(
     if case.manifest.get("execution_packet"):
         packet_instruction = (
             "This case requires a repository execution packet. Inspect the isolated "
-            "starter repository under repo/, follow the execution-packet reference linked "
-            "from SKILL.md, and ground the route in existing files and source anchors. "
-            "Validate the final packet against repo/ with the skill checker. "
+            "starter repository under ../inputs/repo/, follow the execution-packet "
+            "reference linked from ../inputs/skill/SKILL.md, and ground the route in "
+            "existing files and source anchors. Validate the final packet against "
+            "../inputs/repo/ with the skill checker. "
         )
     prompt = (
-        "Read skill/SKILL.md and convert source.md into a compact, self-contained "
-        "implementation spec. Write only the artifact to result.spec.ctx. "
+        "Read ../inputs/skill/SKILL.md and convert ../inputs/source.md into a compact, "
+        "self-contained implementation spec. The ../inputs tree is immutable. Write only "
+        "the artifact to result.spec.ctx in the current workspace. "
         f"The implementation target is {case.manifest['entrypoint']}. Preserve every "
         "requirement and every acceptance ID from the source. Do not implement the "
         "task. Apply the SKILL.md quality gate before finishing. Do not access files "
-        "outside this workspace or use network access. "
+        "outside the current workspace and ../inputs, and do not use network access. "
         f"{packet_instruction}\n"
     )
     if token_encoding:
@@ -74,6 +80,26 @@ def mock_provider() -> dict[str, Any]:
     }
 
 
+def generation_case_snapshot(case: core.BenchmarkCase) -> dict[str, str]:
+    source = case.spec_path("baseline").read_text(encoding="utf-8")
+    return {
+        "fixture_sha256": core.tree_sha256(case.path),
+        "starter_sha256": core.tree_sha256(case.path / "starter"),
+        "source_sha256": core.sha256_bytes(source.encode("utf-8")),
+    }
+
+
+def require_generation_snapshot(
+    case: core.BenchmarkCase,
+    expected: dict[str, str],
+    skill_sha256: str,
+) -> None:
+    if generation_case_snapshot(case) != expected:
+        raise RuntimeError(f"{case.id}: generation fixture changed during run")
+    if core.tree_sha256(SKILL_DIR) != skill_sha256:
+        raise RuntimeError("semantic-spec-writer skill changed during run")
+
+
 def generation_document(args: argparse.Namespace, cases: list[core.BenchmarkCase]) -> dict[str, Any]:
     cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
     corpus = core.discover_cases(cases_dir=cases_dir)
@@ -97,6 +123,9 @@ def generation_document(args: argparse.Namespace, cases: list[core.BenchmarkCase
             "git_commit": core.git_commit(),
         },
         "skill_sha256": core.tree_sha256(SKILL_DIR),
+        "fixture_snapshot": {
+            case.id: generation_case_snapshot(case) for case in cases
+        },
         "results": [],
     }
 
@@ -185,16 +214,13 @@ def prepare_generation_workspace(
     workspace = attempt_root / "workspace"
     inputs.mkdir(parents=True)
     workspace.mkdir()
-    shutil.copytree(SKILL_DIR, inputs / "skill")
+    core.copy_fixture_tree(SKILL_DIR, inputs / "skill")
     shutil.copy2(case.spec_path("baseline"), inputs / "source.md")
-    shutil.copytree(
+    core.copy_fixture_tree(
         case.path / "starter",
         inputs / "repo",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    (workspace / "skill").symlink_to(inputs / "skill", target_is_directory=True)
-    (workspace / "source.md").symlink_to(inputs / "source.md")
-    (workspace / "repo").symlink_to(inputs / "repo", target_is_directory=True)
     subprocess.run(
         ["git", "init", "--quiet"],
         cwd=workspace,
@@ -203,6 +229,54 @@ def prepare_generation_workspace(
         text=True,
     )
     return workspace, inputs / "repo"
+
+
+def read_generation_artifact(path: Path, workspace: Path) -> str:
+    try:
+        workspace_root = workspace.resolve(strict=True)
+        before = path.lstat()
+    except OSError as exc:
+        raise RuntimeError("provider did not create result.spec.ctx") from exc
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise RuntimeError("provider artifact must be a single regular file")
+    if before.st_size > MAX_GENERATED_ARTIFACT_BYTES:
+        raise RuntimeError("provider artifact exceeds size limit")
+    try:
+        path.resolve(strict=True).relative_to(workspace_root)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("provider artifact escapes generation workspace") from exc
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise RuntimeError("provider artifact cannot be opened safely") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+            or opened.st_size > MAX_GENERATED_ARTIFACT_BYTES
+        ):
+            raise RuntimeError("provider artifact changed during validation")
+        payload = bytearray()
+        while len(payload) <= MAX_GENERATED_ARTIFACT_BYTES:
+            chunk = os.read(
+                descriptor,
+                min(65_536, MAX_GENERATED_ARTIFACT_BYTES + 1 - len(payload)),
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if len(payload) > MAX_GENERATED_ARTIFACT_BYTES:
+            raise RuntimeError("provider artifact exceeds size limit")
+    finally:
+        os.close(descriptor)
+    try:
+        return bytes(payload).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("provider artifact is not valid UTF-8") from exc
 
 
 def generate(args: argparse.Namespace) -> Path:
@@ -226,9 +300,13 @@ def generate(args: argparse.Namespace) -> Path:
     with tempfile.TemporaryDirectory(prefix="semantic-spec-generate-") as temporary:
         temporary_root = Path(temporary)
         for index, case in enumerate(cases, start=1):
+            expected_snapshot = document["fixture_snapshot"][case.id]
+            require_generation_snapshot(
+                case, expected_snapshot, document["skill_sha256"]
+            )
             destination = specs / f"{case.id}.spec.ctx"
             source = case.spec_path("baseline").read_text(encoding="utf-8")
-            starter_hash = core.tree_sha256(case.path / "starter")
+            starter_hash = expected_snapshot["starter_sha256"]
             attempts: list[dict[str, Any]] = []
             selected_attempt = None
             selected_semantic = ""
@@ -282,15 +360,10 @@ def generate(args: argparse.Namespace) -> Path:
                         )
                     if failure := provider_failure(provider):
                         raise RuntimeError(failure)
-                    if not artifact_path.is_file() or artifact_path.is_symlink():
-                        raise RuntimeError("provider did not create result.spec.ctx")
-                    try:
-                        artifact_path.resolve().relative_to(workspace.resolve())
-                    except ValueError as exc:
-                        raise RuntimeError(
-                            "provider artifact escapes generation workspace"
-                        ) from exc
-                    semantic = artifact_path.read_text(encoding="utf-8")
+                    semantic = read_generation_artifact(artifact_path, workspace)
+                    validated_artifact = attempt_root / "candidate.spec.ctx"
+                    with validated_artifact.open("x", encoding="utf-8") as handle:
+                        handle.write(semantic)
                     validation_errors = core.validate_semantic_text(case, semantic)
                     verification_command = case.manifest.get("verification_command")
                     if (
@@ -305,14 +378,14 @@ def generate(args: argparse.Namespace) -> Path:
                     if case.manifest.get("execution_packet"):
                         validation_errors.extend(
                             core.validate_execution_packet_artifact(
-                                case, artifact_path
+                                case, validated_artifact
                             )
                         )
                     check_command = [
                         sys.executable,
                         str(SKILL_DIR / "scripts" / "check_conversion.py"),
                         str(case.spec_path("baseline")),
-                        str(artifact_path),
+                        str(validated_artifact),
                     ]
                     if args.token_encoding:
                         check_command.extend(["--encoding", args.token_encoding])
@@ -334,19 +407,35 @@ def generate(args: argparse.Namespace) -> Path:
                         raise RuntimeError("; ".join(validation_errors))
                 except subprocess.TimeoutExpired:
                     provider = failed_provider("provider timeout", args.timeout_seconds)
-                    semantic = (
-                        artifact_path.read_text(encoding="utf-8")
-                        if artifact_path.is_file()
-                        else ""
-                    )
+                    if not semantic:
+                        try:
+                            semantic = read_generation_artifact(artifact_path, workspace)
+                        except RuntimeError:
+                            semantic = ""
                     error = "provider timeout"
                 except Exception as exc:  # noqa: BLE001 - checkpoint failed attempt
-                    semantic = (
-                        artifact_path.read_text(encoding="utf-8")
-                        if artifact_path.is_file()
-                        else ""
-                    )
+                    if not semantic:
+                        try:
+                            semantic = read_generation_artifact(artifact_path, workspace)
+                        except RuntimeError:
+                            semantic = ""
                     error = f"{type(exc).__name__}: {exc}"
+
+                try:
+                    if (
+                        core.tree_sha256(starter_snapshot) != starter_hash
+                        or core.tree_sha256(starter_snapshot.parent) != input_hash
+                    ):
+                        raise RuntimeError(
+                            f"{case.id}: immutable generation input was modified"
+                        )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    semantic = ""
+                    error = f"{type(exc).__name__}: {exc}"
+
+                require_generation_snapshot(
+                    case, expected_snapshot, document["skill_sha256"]
+                )
 
                 attempt_artifact = None
                 if semantic:
@@ -365,6 +454,10 @@ def generate(args: argparse.Namespace) -> Path:
                             if semantic else None
                         ),
                         "prompt_sha256": core.sha256_bytes(prompt.encode("utf-8")),
+                        "source_sha256": expected_snapshot["source_sha256"],
+                        "starter_sha256": expected_snapshot["starter_sha256"],
+                        "fixture_sha256": expected_snapshot["fixture_sha256"],
+                        "skill_sha256": document["skill_sha256"],
                     },
                     "provider": provider,
                     "error": error,
@@ -403,9 +496,12 @@ def generate(args: argparse.Namespace) -> Path:
                     ) if semantic else None,
                 },
                 "provenance": {
-                    "source_sha256": core.sha256_bytes(source.encode("utf-8")),
+                    "source_sha256": expected_snapshot["source_sha256"],
                     "spec_sha256": core.sha256_bytes(semantic.encode("utf-8")) if semantic else None,
                     "prompt_sha256": selected_record["provenance"]["prompt_sha256"],
+                    "starter_sha256": expected_snapshot["starter_sha256"],
+                    "fixture_sha256": expected_snapshot["fixture_sha256"],
+                    "skill_sha256": document["skill_sha256"],
                 },
                 "provider": aggregate_attempt_providers(attempts, selected_attempt),
                 "error": None if selected_attempt is not None else last_attempt["error"],
@@ -474,6 +570,126 @@ def generation_static_rows(generation: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def generation_report_is_credible(generation: dict[str, Any]) -> bool:
+    cases = generation.get("cases")
+    snapshots = generation.get("fixture_snapshot")
+    results = generation.get("results")
+    try:
+        corpus = core.recorded_case_corpus(generation)
+        current_snapshots = {
+            case.id: generation_case_snapshot(case) for case in corpus
+        }
+        current_skill_hash = core.tree_sha256(SKILL_DIR)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    corpus_ids = {case.id for case in corpus}
+    if (
+        not isinstance(cases, list)
+        or not cases
+        or any(not isinstance(case, str) for case in cases)
+        or len(cases) != len(set(cases))
+        or set(cases) != corpus_ids
+        or not isinstance(snapshots, dict)
+        or snapshots != current_snapshots
+        or generation.get("skill_sha256") != current_skill_hash
+        or not isinstance(results, list)
+        or any(not isinstance(result, dict) for result in results)
+        or len(results) != len(corpus_ids)
+    ):
+        return False
+    result_cases = [result.get("case") for result in results]
+    if (
+        any(not isinstance(case, str) for case in result_cases)
+        or len(result_cases) != len(set(result_cases))
+        or set(result_cases) != corpus_ids
+    ):
+        return False
+
+    def nonnegative_int(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+    hash_pattern = re.compile(r"^[0-9a-f]{64}$")
+    cases_by_id = {case.id: case for case in corpus}
+    for result in results:
+        case = cases_by_id[result["case"]]
+        snapshot = snapshots[case.id]
+        attempts = result.get("attempts")
+        selected_attempt = result.get("selected_attempt")
+        provenance = result.get("provenance")
+        if (
+            result.get("error") is not None
+            or not isinstance(selected_attempt, int)
+            or isinstance(selected_attempt, bool)
+            or not isinstance(attempts, list)
+            or selected_attempt < 1
+            or selected_attempt > len(attempts)
+            or result.get("artifact") != f"specs/{case.id}.spec.ctx"
+            or result.get("source")
+            != core.text_metrics(
+                case.spec_path("baseline").read_text(encoding="utf-8")
+            )
+            or not isinstance(provenance, dict)
+            or provenance.get("source_sha256") != snapshot["source_sha256"]
+            or provenance.get("starter_sha256") != snapshot["starter_sha256"]
+            or provenance.get("fixture_sha256") != snapshot["fixture_sha256"]
+            or provenance.get("skill_sha256") != current_skill_hash
+            or not hash_pattern.fullmatch(str(provenance.get("spec_sha256", "")))
+            or not hash_pattern.fullmatch(str(provenance.get("prompt_sha256", "")))
+        ):
+            return False
+        if [attempt.get("attempt") for attempt in attempts] != list(
+            range(1, len(attempts) + 1)
+        ):
+            return False
+        for attempt in attempts:
+            attempt_provenance = attempt.get("provenance")
+            provider = attempt.get("provider")
+            usage = provider.get("usage") if isinstance(provider, dict) else None
+            if (
+                not isinstance(attempt_provenance, dict)
+                or attempt_provenance.get("source_sha256")
+                != snapshot["source_sha256"]
+                or attempt_provenance.get("starter_sha256")
+                != snapshot["starter_sha256"]
+                or attempt_provenance.get("fixture_sha256")
+                != snapshot["fixture_sha256"]
+                or attempt_provenance.get("skill_sha256") != current_skill_hash
+                or not hash_pattern.fullmatch(
+                    str(attempt_provenance.get("prompt_sha256", ""))
+                )
+                or not isinstance(provider, dict)
+                or not isinstance(provider.get("event_errors"), list)
+                or not isinstance(usage, dict)
+                or any(
+                    not nonnegative_int(usage.get(field))
+                    for field in (
+                        "input_tokens",
+                        "uncached_input_tokens",
+                        "output_tokens",
+                    )
+                )
+            ):
+                return False
+        selected = attempts[selected_attempt - 1]
+        if (
+            selected.get("error") is not None
+            or selected["provider"].get("return_code") != 0
+            or selected["provider"].get("event_errors") != []
+            or selected["provenance"].get("spec_sha256")
+            != provenance["spec_sha256"]
+            or selected["provenance"].get("prompt_sha256")
+            != provenance["prompt_sha256"]
+            or selected.get("semantic") != result.get("semantic")
+        ):
+            return False
+
+    return bool(
+        generation.get("provider") != "mock"
+        and generation.get("model")
+        and generation.get("reasoning_effort")
+    )
+
+
 def render_report(generation: dict[str, Any], implementation: dict[str, Any]) -> str:
     if set(generation["cases"]) != set(implementation["cases"]):
         raise ValueError("generation and implementation case sets differ")
@@ -497,32 +713,13 @@ def render_report(generation: dict[str, Any], implementation: dict[str, Any]) ->
         ("Output tokens", "output_tokens", "total_output_tokens"),
     ]
     valid_generated = sum(result.get("error") is None for result in generation["results"])
-    full_corpus = bool(generation.get("full_corpus", (
-        set(generation["cases"]) == {case.id for case in core.discover_cases()}
-    )))
-    complete_pairs = len(implementation["results"]) == (
-        len(implementation["cases"]) * repetitions * len(core.VARIANTS)
-    )
     quality_preserved = core.quality_preserved(implementation["results"])
     credible = bool(
-        generation["provider"] != "mock"
-        and generation.get("model")
-        and generation.get("reasoning_effort")
-        and valid_generated == len(generation["results"])
-        and implementation["provider"] != "mock"
-        and implementation.get("model")
-        and implementation.get("reasoning_effort")
-        and repetitions >= 3
-        and full_corpus
-        and complete_pairs
-        and all(result.get("error") is None for result in implementation["results"])
-        and all(
-            result["provider"].get("return_code") == 0
-            for result in implementation["results"]
-        )
-        and all(
-            "input_tokens" in result["provider"].get("usage", {})
-            for result in implementation["results"]
+        generation.get("case_suite", "cases")
+        == implementation.get("case_suite", "cases")
+        and generation_report_is_credible(generation)
+        and core.implementation_report_is_credible(
+            implementation, implementation["results"]
         )
     )
     lines = [

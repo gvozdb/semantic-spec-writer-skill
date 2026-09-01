@@ -52,6 +52,14 @@ def validate_cases(cases: list[core.BenchmarkCase]) -> list[str]:
         verification_command = case.manifest.get("verification_command")
         if not isinstance(verification_command, str) or not verification_command.strip():
             errors.append(f"{case.id}: handoff case requires verification_command")
+        verification_files = case.manifest.get("verification_files")
+        if not isinstance(verification_files, list) or not verification_files:
+            errors.append(f"{case.id}: handoff case requires verification_files")
+        else:
+            try:
+                core.verification_fixtures(case)
+            except ValueError as exc:
+                errors.append(str(exc))
         errors.extend(validate_packet(case))
     return errors
 
@@ -114,6 +122,24 @@ def failed_provider(message: str, duration: float | int | None = None) -> dict[s
     }
 
 
+def case_snapshot(case: core.BenchmarkCase) -> dict[str, Any]:
+    fixtures = core.verification_fixtures(case)
+    return {
+        "fixture_sha256": core.tree_sha256(case.path),
+        "starter_sha256": core.tree_sha256(case.path / "starter"),
+        "verification_fixture_sha256": core.verification_fixture_sha256(fixtures),
+        "variants": {
+            variant: core.sha256_bytes(artifact_text(case, variant).encode("utf-8"))
+            for variant in VARIANTS
+        },
+    }
+
+
+def require_case_snapshot(case: core.BenchmarkCase, expected: dict[str, Any]) -> None:
+    if case_snapshot(case) != expected:
+        raise RuntimeError(f"{case.id}: benchmark fixture changed during run")
+
+
 def create_document(
     args: argparse.Namespace,
     cases: list[core.BenchmarkCase],
@@ -133,6 +159,7 @@ def create_document(
         "cases": [case.id for case in cases],
         "full_corpus": {case.id for case in cases} == {case.id for case in corpus},
         "variants": variants,
+        "fixture_snapshot": {case.id: case_snapshot(case) for case in cases},
         "environment": {
             "python": sys.version.split()[0],
             "codex": core.command_version(["codex", "--version"]),
@@ -174,6 +201,8 @@ def run(args: argparse.Namespace) -> Path:
     with tempfile.TemporaryDirectory(prefix="execution-packet-bench-") as directory:
         root = Path(directory)
         for index, (case, repetition, variant) in enumerate(jobs, start=1):
+            expected_snapshot = document["fixture_snapshot"][case.id]
+            require_case_snapshot(case, expected_snapshot)
             run_root = root / f"{index:03d}-{case.id}-{variant}-r{repetition}"
             run_root.mkdir()
             workspace = core.safe_workspace(case, run_root)
@@ -208,6 +237,8 @@ def run(args: argparse.Namespace) -> Path:
                 provider = failed_provider(f"{type(exc).__name__}: {exc}")
                 run_errors.append(f"provider {type(exc).__name__}: {exc}")
 
+            require_case_snapshot(case, expected_snapshot)
+
             if provider_completed:
                 if provider.get("return_code") != 0:
                     run_errors.append(
@@ -240,6 +271,7 @@ def run(args: argparse.Namespace) -> Path:
                 if verification_failed:
                     grade["task_success"] = False
 
+            require_case_snapshot(case, expected_snapshot)
             error = "; ".join(run_errors) if run_errors else None
 
             result = {
@@ -250,10 +282,10 @@ def run(args: argparse.Namespace) -> Path:
                 "run_order": index,
                 "spec": core.text_metrics(specification),
                 "provenance": {
-                    "spec_sha256": core.sha256_bytes(specification.encode("utf-8")),
+                    "spec_sha256": expected_snapshot["variants"][variant],
                     "prompt_sha256": core.sha256_bytes(prompt.encode("utf-8")),
-                    "starter_sha256": core.tree_sha256(case.path / "starter"),
-                    "fixture_sha256": core.tree_sha256(case.path),
+                    "starter_sha256": expected_snapshot["starter_sha256"],
+                    "fixture_sha256": expected_snapshot["fixture_sha256"],
                 },
                 "provider": provider,
                 "verification": verification,
@@ -427,7 +459,13 @@ def report_run_is_credible(
     cases = document.get("cases")
     repetitions = document.get("repetitions")
     variants = document.get("variants")
-    corpus = core.discover_cases(cases_dir=CASES_DIR)
+    snapshots = document.get("fixture_snapshot")
+    try:
+        corpus = core.discover_cases(cases_dir=CASES_DIR)
+        current_snapshots = {case.id: case_snapshot(case) for case in corpus}
+        current_static = static_rows(corpus)
+    except (OSError, RuntimeError, ValueError):
+        return False
     corpus_ids = {case.id for case in corpus}
     if (
         not isinstance(cases, list)
@@ -442,6 +480,10 @@ def report_run_is_credible(
         or len(variants) != len(VARIANTS)
         or len(variants) != len(set(variants))
         or set(variants) != set(VARIANTS)
+        or not isinstance(snapshots, dict)
+        or set(snapshots) != corpus_ids
+        or snapshots != current_snapshots
+        or document.get("static") != current_static
         or not results
     ):
         return False
@@ -452,36 +494,106 @@ def report_run_is_credible(
         for repetition in range(1, repetitions + 1)
         for variant in VARIANTS
     }
+    if any(not isinstance(result, dict) for result in results):
+        return False
     actual_keys = [
         (result.get("case"), result.get("repetition"), result.get("variant"))
         for result in results
     ]
+    if any(
+        not isinstance(case, str)
+        or not isinstance(repetition, int)
+        or isinstance(repetition, bool)
+        or not isinstance(variant, str)
+        for case, repetition, variant in actual_keys
+    ):
+        return False
     if len(actual_keys) != len(set(actual_keys)) or set(actual_keys) != expected_keys:
         return False
+    run_orders = [result.get("run_order") for result in results]
+    if (
+        any(
+            not isinstance(value, int) or isinstance(value, bool)
+            for value in run_orders
+        )
+        or sorted(run_orders) != list(range(1, len(results) + 1))
+    ):
+        return False
 
-    verification_commands_by_case = {
-        case.id: case.manifest.get("verification_command") for case in corpus
-    }
+    def nonnegative_int(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+    def nonnegative_number(value: Any) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        )
+
+    cases_by_id = {case.id: case for case in corpus}
     for result in results:
         provider = result.get("provider")
         verification = result.get("verification")
+        provenance = result.get("provenance")
+        grade = result.get("grade")
         usage = provider.get("usage") if isinstance(provider, dict) else None
         event_errors = provider.get("event_errors") if isinstance(provider, dict) else None
-        expected_verification = verification_commands_by_case.get(result.get("case"))
+        case = cases_by_id.get(result.get("case"))
+        variant = result.get("variant")
+        if case is None or variant not in VARIANTS:
+            return False
+        snapshot = current_snapshots[case.id]
+        specification = artifact_text(case, variant)
+        prompt = core.benchmark_prompt(specification)
+        expected_provenance = {
+            "spec_sha256": snapshot["variants"][variant],
+            "prompt_sha256": core.sha256_bytes(prompt.encode("utf-8")),
+            "starter_sha256": snapshot["starter_sha256"],
+            "fixture_sha256": snapshot["fixture_sha256"],
+        }
+        expected_verification = case.manifest.get("verification_command")
         if (
             result.get("error") is not None
+            or result.get("pair_id")
+            != f"{case.id}:r{result.get('repetition')}"
+            or result.get("spec") != core.text_metrics(specification)
             or not isinstance(provider, dict)
             or provider.get("return_code") != 0
             or event_errors != []
+            or not nonnegative_number(provider.get("duration_seconds"))
+            or not nonnegative_int(provider.get("tool_call_total"))
+            or not isinstance(provider.get("tool_calls"), dict)
+            or not nonnegative_int(
+                provider["tool_calls"].get("command_execution")
+            )
+            or not isinstance(provider.get("command_categories"), dict)
+            or any(
+                not nonnegative_int(provider["command_categories"].get(field))
+                for field in ("discovery", "read", "verify")
+            )
             or not isinstance(usage, dict)
-            or not isinstance(usage.get("uncached_input_tokens"), int)
-            or isinstance(usage.get("uncached_input_tokens"), bool)
-            or usage["uncached_input_tokens"] < 0
+            or any(
+                not nonnegative_int(usage.get(field))
+                for field in (
+                    "input_tokens",
+                    "uncached_input_tokens",
+                    "output_tokens",
+                )
+            )
+            or provenance != expected_provenance
             or not isinstance(verification, dict)
             or not isinstance(verification.get("command"), str)
             or not verification["command"].strip()
             or verification.get("command") != expected_verification
+            or verification.get("fixture_sha256")
+            != snapshot["verification_fixture_sha256"]
             or verification.get("return_code") != 0
+            or not isinstance(grade, dict)
+            or not isinstance(grade.get("task_success"), bool)
+            or not nonnegative_int(grade.get("passed"))
+            or not nonnegative_int(grade.get("total"))
+            or not nonnegative_int(grade.get("acceptance_passed"))
+            or not nonnegative_int(grade.get("acceptance_total"))
         ):
             return False
     return bool(
@@ -512,6 +624,23 @@ def report(document: dict[str, Any]) -> str:
     )
     credible = report_run_is_credible(document, results)
     preserved = quality_not_worse(results, "semantic", "packet")
+    semantic_successes = sum(
+        result["grade"].get("task_success", False)
+        for result in results
+        if result["variant"] == "semantic"
+    )
+    packet_successes = sum(
+        result["grade"].get("task_success", False)
+        for result in results
+        if result["variant"] == "packet"
+    )
+    quality_improved = bool(
+        packet_successes > semantic_successes
+        and aggregates["packet"]["test_pass_rate"]
+        >= aggregates["semantic"]["test_pass_rate"]
+        and aggregates["packet"]["acceptance_pass_rate"]
+        >= aggregates["semantic"]["acceptance_pass_rate"]
+    )
     uncached_ci = primary_uncached["fixture_cluster_bootstrap_95_ci"]
     expected_primary_pairs = len(document["cases"]) * document["repetitions"]
     full_primary_coverage = primary_uncached["pairs"] == expected_primary_pairs
@@ -609,6 +738,19 @@ def report(document: dict[str, Any]) -> str:
         lines.append(
             "This suite supports lower uncached-input usage for Packet v2 versus Semantic v1 while preserving measured behavior."
         )
+    elif credible and quality_improved:
+        uncached_reduction = core.compression_percent(
+            aggregates["semantic"]["total_uncached_input_tokens"],
+            aggregates["packet"]["total_uncached_input_tokens"],
+        )
+        lines.append(
+            f"Packet v2 improved measured task success ({packet_successes}/{len(document['cases']) * document['repetitions']} "
+            f"versus {semantic_successes}/{len(document['cases']) * document['repetitions']}) and used "
+            f"{uncached_reduction:.2f}% fewer uncached-input tokens across all runs. "
+            f"The strict equal-success token comparison covered only {primary_uncached['pairs']}/"
+            f"{expected_primary_pairs} pairs, so this establishes a quality gain for this suite, "
+            "not an isolated full-suite token-saving claim."
+        )
     elif credible:
         lines.append(
             "Packet v2 preserved measured behavior but did not establish a reliable uncached-input reduction over Semantic v1."
@@ -625,8 +767,9 @@ def report(document: dict[str, Any]) -> str:
         "- Command executions are coarse Codex events; one event may contain multiple shell operations.",
         "- Curated artifacts isolate execution behavior but exclude packet-authoring cost and reuse break-even.",
         "- Hidden tests and hidden expected outputs stay outside the solution process; "
-        "visible smoke assertions are exposed equally to every arm. Solution calls use a "
-        "network-disabled read-only sandbox, not a full VM boundary.",
+        "visible smoke assertions are restored from immutable fixtures for every arm. "
+        "Implementation agents use workspace-write; hidden solution calls use a "
+        "network-disabled read-only sandbox. This is not a full VM boundary.",
         "- Results apply only to the recorded model, reasoning effort, repository shapes, and cache behavior.",
         "",
     ])

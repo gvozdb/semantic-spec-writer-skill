@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.machinery
 import importlib.util
 import sys
 from pathlib import Path
@@ -55,9 +56,62 @@ def import_entrypoint(workspace: Path, entrypoint: str) -> ModuleType:
 
     package = module_parts[0]
     existing = sys.modules.get(package)
-    existing_file = Path(getattr(existing, "__file__", "")).resolve() if existing else None
-    if existing_file is not None and workspace not in existing_file.parents:
+    package_root = workspace / package
+
+    def belongs_to_workspace(module: ModuleType) -> bool:
+        candidates: list[str] = []
+        module_file = getattr(module, "__file__", None)
+        if isinstance(module_file, str) and module_file:
+            candidates.append(module_file)
+        module_paths = getattr(module, "__path__", ())
+        candidates.extend(str(item) for item in module_paths)
+        for candidate in candidates:
+            try:
+                Path(candidate).resolve().relative_to(workspace)
+                return True
+            except ValueError:
+                continue
+        return False
+
+    collision = existing is not None and not belongs_to_workspace(existing)
+    if not (package_root / "__init__.py").is_file() and collision:
+        synthetic_package = (
+            f"_benchmark_namespace_{package}_{abs(hash(str(workspace)))}"
+        )
+        namespace = ModuleType(synthetic_package)
+        namespace.__package__ = synthetic_package
+        namespace.__path__ = [str(package_root)]
+        namespace_spec = importlib.machinery.ModuleSpec(
+            synthetic_package,
+            loader=None,
+            is_package=True,
+        )
+        namespace_spec.submodule_search_locations = [str(package_root)]
+        namespace.__spec__ = namespace_spec
+        namespace.__loader__ = None
+        sys.modules[synthetic_package] = namespace
+        importlib.invalidate_caches()
+        return importlib.import_module(
+            ".".join((synthetic_package, *module_parts[1:]))
+        )
+
+    if collision:
         for name in list(sys.modules):
             if name == package or name.startswith(f"{package}."):
                 del sys.modules[name]
+
+    if not (package_root / "__init__.py").is_file():
+        namespace = ModuleType(package)
+        namespace.__package__ = package
+        namespace.__path__ = [str(package_root)]
+        namespace_spec = importlib.machinery.ModuleSpec(
+            package,
+            loader=None,
+            is_package=True,
+        )
+        namespace_spec.submodule_search_locations = [str(package_root)]
+        namespace.__spec__ = namespace_spec
+        namespace.__loader__ = None
+        sys.modules[package] = namespace
+    importlib.invalidate_caches()
     return importlib.import_module(".".join(module_parts))

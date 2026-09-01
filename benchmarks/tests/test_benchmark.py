@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
 
 
@@ -90,6 +91,29 @@ class BenchmarkCliTest(unittest.TestCase):
                 benchmark_module.resolve_relative_file(
                     root, str(root / "absolute.py"), "entrypoint"
                 )
+
+    def test_fixture_symlink_is_rejected_before_workspace_copy(self) -> None:
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="fixture-symlink-") as directory:
+            root = Path(directory)
+            case_dir = root / "tenant-settings"
+            shutil.copytree(source, case_dir)
+            secret = root / "secret.txt"
+            secret.write_text("must-not-be-copied", encoding="utf-8")
+            target = case_dir / "starter" / "settings" / "schema.py"
+            target.unlink()
+            target.symlink_to(secret)
+            case = benchmark_module.BenchmarkCase(
+                case_dir,
+                json.loads((case_dir / "case.json").read_text(encoding="utf-8")),
+            )
+
+            errors = benchmark_module.validate_case(case)
+            self.assertTrue(any("cannot contain symlinks" in error for error in errors))
+            workspace_root = root / "workspaces"
+            with self.assertRaisesRegex(ValueError, "cannot contain symlinks"):
+                benchmark_module.safe_workspace(case, workspace_root)
+            self.assertFalse(workspace_root.exists())
 
     def test_case_ids_cannot_escape_workspace_or_disagree_with_directory(self) -> None:
         with tempfile.TemporaryDirectory(prefix="case-id-") as directory:
@@ -177,6 +201,25 @@ class BenchmarkCliTest(unittest.TestCase):
             result("case-b", "semantic", True),
         ]
         self.assertFalse(benchmark_module.quality_preserved(rows))
+
+    def test_partial_semantic_telemetry_does_not_crash_pair_reduction(self) -> None:
+        results = [
+            {
+                "case": "case-a",
+                "repetition": 1,
+                "variant": "baseline",
+                "provider": {"usage": {"input_tokens": 100}},
+            },
+            {
+                "case": "case-a",
+                "repetition": 1,
+                "variant": "semantic",
+                "provider": {"usage": {}},
+            },
+        ]
+        self.assertEqual(
+            benchmark_module.paired_reductions(results, "input_tokens"), []
+        )
 
     def test_semantic_variants_are_direct_execution_documents(self) -> None:
         ambiguous_python_map_fields = (
@@ -437,6 +480,9 @@ class BenchmarkCliTest(unittest.TestCase):
             workspace, snapshot = lifecycle.prepare_generation_workspace(
                 Path(directory) / "attempt", case
             )
+            self.assertFalse((workspace / "repo").exists())
+            self.assertFalse((workspace / "source.md").exists())
+            self.assertFalse((workspace / "skill").exists())
             before = benchmark_module.tree_sha256(snapshot)
             target = snapshot / "solution.py"
             completed = benchmark_module.run_restricted_sandbox(
@@ -454,6 +500,42 @@ class BenchmarkCliTest(unittest.TestCase):
             )
             self.assertNotEqual(completed.returncode, 0, completed)
             self.assertEqual(benchmark_module.tree_sha256(snapshot), before)
+
+    def test_lifecycle_never_persists_symlinked_provider_artifact(self) -> None:
+        lifecycle = load_module("benchmark_lifecycle_symlink", LIFECYCLE)
+        original = lifecycle.core.run_codex
+        with tempfile.TemporaryDirectory(prefix="generation-symlink-") as directory:
+            root = Path(directory)
+            secret = root / "secret.txt"
+            secret.write_text("private-provider-oracle", encoding="utf-8")
+            output = root / "generated"
+
+            def malicious_provider(workspace, *_args, **_kwargs):
+                (workspace / "result.spec.ctx").symlink_to(secret)
+                raise RuntimeError("provider failed")
+
+            lifecycle.core.run_codex = malicious_provider
+            try:
+                lifecycle.generate(Namespace(
+                    provider="codex",
+                    model="test-model",
+                    reasoning_effort="medium",
+                    token_encoding=None,
+                    max_attempts=1,
+                    cases_dir=None,
+                    case=["email-routing"],
+                    output=output,
+                    timeout_seconds=30,
+                ))
+            finally:
+                lifecycle.core.run_codex = original
+
+            document_text = (output / "generation.json").read_text(encoding="utf-8")
+            document = json.loads(document_text)
+            attempt = document["results"][0]["attempts"][0]
+            self.assertIsNone(attempt["artifact"])
+            self.assertIsNone(attempt["semantic"])
+            self.assertNotIn("private-provider-oracle", document_text)
 
     def test_mock_context_run_and_report(self) -> None:
         with tempfile.TemporaryDirectory(prefix="semantic-spec-context-") as directory:
@@ -826,6 +908,32 @@ class BenchmarkCliTest(unittest.TestCase):
                     errors,
                 )
 
+    def test_handoff_case_requires_immutable_verification_files(self) -> None:
+        handoff = load_module("benchmark_handoff_required_files", HANDOFF)
+        source = HANDOFF_CASES / "tenant-settings"
+        for invalid_value in (None, []):
+            with self.subTest(value=invalid_value), tempfile.TemporaryDirectory(
+                prefix="required-verification-files-"
+            ) as directory:
+                case_dir = Path(directory) / "tenant-settings"
+                shutil.copytree(source, case_dir)
+                manifest = json.loads(
+                    (case_dir / "case.json").read_text(encoding="utf-8")
+                )
+                if invalid_value is None:
+                    manifest.pop("verification_files")
+                else:
+                    manifest["verification_files"] = invalid_value
+                (case_dir / "case.json").write_text(
+                    json.dumps(manifest), encoding="utf-8"
+                )
+                case = benchmark_module.BenchmarkCase(case_dir, manifest)
+                errors = handoff.validate_cases([case])
+                self.assertTrue(
+                    any("requires verification_files" in error for error in errors),
+                    errors,
+                )
+
     def test_sandboxed_grader_cannot_read_outside_allowed_roots(self) -> None:
         if shutil.which("codex") is None:
             self.skipTest("Codex sandbox is not installed")
@@ -953,6 +1061,39 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertEqual(verification["return_code"], 0, verification)
             self.assertFalse((workspace / "marker.txt").exists())
 
+    def test_verification_restores_trusted_test_fixture(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="verify-fixture-") as directory:
+            root = Path(directory)
+            starter = root / "starter"
+            workspace = root / "workspace"
+            starter.mkdir()
+            workspace.mkdir()
+            original_test = "raise SystemExit(7)\n"
+            (starter / "test_smoke.py").write_text(
+                original_test, encoding="utf-8"
+            )
+            (workspace / "test_smoke.py").write_text(
+                "raise SystemExit(0)\n", encoding="utf-8"
+            )
+            case = benchmark_module.BenchmarkCase(
+                root,
+                {
+                    "id": "verify-fixture",
+                    "entrypoint": "solution.py",
+                    "verification_command": "python3 test_smoke.py",
+                    "verification_files": ["test_smoke.py"],
+                },
+            )
+
+            verification = benchmark_module.run_verification(
+                case, workspace, trusted=True
+            )
+            self.assertEqual(verification["return_code"], 7, verification)
+            expected_hash = benchmark_module.verification_fixture_sha256([
+                ("test_smoke.py", starter / "test_smoke.py")
+            ])
+            self.assertEqual(verification["fixture_sha256"], expected_hash)
+
     def test_lifecycle_rejects_zero_exit_provider_event_errors(self) -> None:
         lifecycle = load_module("benchmark_lifecycle_events", LIFECYCLE)
         failure = lifecycle.provider_failure({
@@ -1032,20 +1173,51 @@ class BenchmarkCliTest(unittest.TestCase):
         handoff = load_module("benchmark_handoff_credible", HANDOFF)
         cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
         results: list[dict[str, object]] = []
+        run_order = 0
         for case in cases:
             for repetition in range(1, 4):
                 for variant in ("markdown", "semantic", "packet"):
+                    run_order += 1
+                    specification = handoff.artifact_text(case, variant)
+                    prompt = benchmark_module.benchmark_prompt(specification)
+                    snapshot = handoff.case_snapshot(case)
                     results.append({
                         "case": case.id,
+                        "pair_id": f"{case.id}:r{repetition}",
                         "variant": variant,
                         "repetition": repetition,
+                        "run_order": run_order,
+                        "spec": benchmark_module.text_metrics(specification),
+                        "provenance": {
+                            "spec_sha256": snapshot["variants"][variant],
+                            "prompt_sha256": benchmark_module.sha256_bytes(
+                                prompt.encode("utf-8")
+                            ),
+                            "starter_sha256": snapshot["starter_sha256"],
+                            "fixture_sha256": snapshot["fixture_sha256"],
+                        },
                         "provider": {
                             "return_code": 0,
                             "event_errors": [],
-                            "usage": {"uncached_input_tokens": 100},
+                            "duration_seconds": 1.0,
+                            "tool_call_total": 1,
+                            "tool_calls": {"command_execution": 1},
+                            "command_categories": {
+                                "discovery": 0,
+                                "read": 0,
+                                "verify": 1,
+                            },
+                            "usage": {
+                                "input_tokens": 100,
+                                "uncached_input_tokens": 100,
+                                "output_tokens": 10,
+                            },
                         },
                         "verification": {
                             "command": case.manifest["verification_command"],
+                            "fixture_sha256": snapshot[
+                                "verification_fixture_sha256"
+                            ],
                             "return_code": 0,
                         },
                         "grade": {
@@ -1065,6 +1237,10 @@ class BenchmarkCliTest(unittest.TestCase):
             "repetitions": 3,
             "variants": ["markdown", "semantic", "packet"],
             "full_corpus": False,
+            "fixture_snapshot": {
+                case.id: handoff.case_snapshot(case) for case in cases
+            },
+            "static": handoff.static_rows(cases),
         }
         self.assertTrue(handoff.report_run_is_credible(document, results))
 
@@ -1084,6 +1260,12 @@ class BenchmarkCliTest(unittest.TestCase):
             handoff.report_run_is_credible(document, failed_verification)
         )
 
+        forged_provenance = json.loads(json.dumps(results))
+        forged_provenance[0]["provenance"]["spec_sha256"] = "0" * 64
+        self.assertFalse(
+            handoff.report_run_is_credible(document, forged_provenance)
+        )
+
         forged_subset = dict(document)
         forged_subset["cases"] = [cases[0].id]
         forged_subset["full_corpus"] = True
@@ -1098,6 +1280,168 @@ class BenchmarkCliTest(unittest.TestCase):
         zero_case["cases"] = []
         zero_case["full_corpus"] = True
         self.assertFalse(handoff.report_run_is_credible(zero_case, []))
+
+        original_cases_dir = handoff.CASES_DIR
+        with tempfile.TemporaryDirectory(prefix="handoff-snapshot-") as directory:
+            copied_cases = Path(directory) / "handoff-cases"
+            shutil.copytree(HANDOFF_CASES, copied_cases)
+            handoff.CASES_DIR = copied_cases
+            try:
+                self.assertTrue(handoff.report_run_is_credible(document, results))
+                packet = copied_cases / cases[0].id / "packet.spec.ctx"
+                packet.write_text(
+                    packet.read_text(encoding="utf-8") + "\n# mutated\n",
+                    encoding="utf-8",
+                )
+                self.assertFalse(
+                    handoff.report_run_is_credible(document, results)
+                )
+            finally:
+                handoff.CASES_DIR = original_cases_dir
+
+    def test_implementation_report_requires_exact_result_keys(self) -> None:
+        cases = benchmark_module.discover_cases()
+        semantic_specs = {
+            case.id: case.spec_path("semantic").read_text(encoding="utf-8")
+            for case in cases
+        }
+        document = benchmark_module.create_run_document(
+            Namespace(
+                provider="codex",
+                model="test-model",
+                reasoning_effort="medium",
+                repetitions=3,
+                seed=20260901,
+                pricing={},
+                semantic_dir=None,
+            ),
+            cases,
+            semantic_specs,
+            benchmark_module.CASES_DIR,
+        )
+        results = []
+        run_order = 0
+        for case in cases:
+            snapshot = document["fixture_snapshot"][case.id]
+            for repetition in range(1, 4):
+                for variant in ("baseline", "semantic"):
+                    run_order += 1
+                    results.append({
+                        "case": case.id,
+                        "pair_id": f"{case.id}:r{repetition}",
+                        "variant": variant,
+                        "repetition": repetition,
+                        "run_order": run_order,
+                        "spec": snapshot["metrics"][variant],
+                        "provenance": {
+                            "spec_sha256": snapshot["variants"][variant],
+                            "prompt_sha256": snapshot["prompts"][variant],
+                            "starter_sha256": snapshot["starter_sha256"],
+                            "fixture_sha256": snapshot["fixture_sha256"],
+                        },
+                        "provider": {
+                            "return_code": 0,
+                            "event_errors": [],
+                            "duration_seconds": 1.0,
+                            "tool_call_total": 1,
+                            "usage": {
+                                "input_tokens": 100,
+                                "uncached_input_tokens": 100,
+                                "output_tokens": 10,
+                            },
+                        },
+                        "verification": None,
+                        "grade": {
+                            "passed": 1,
+                            "total": 1,
+                            "acceptance_passed": 1,
+                            "acceptance_total": 1,
+                            "task_success": True,
+                        },
+                        "cost_usd": None,
+                        "error": None,
+                    })
+        document["results"] = results
+        self.assertTrue(
+            benchmark_module.implementation_report_is_credible(document, results)
+        )
+
+        duplicate_replacing_missing = json.loads(json.dumps(results))
+        duplicate_replacing_missing[-1] = duplicate_replacing_missing[0]
+        self.assertFalse(
+            benchmark_module.implementation_report_is_credible(
+                document, duplicate_replacing_missing
+            )
+        )
+
+    def test_lifecycle_report_requires_exact_generation_cases(self) -> None:
+        lifecycle = load_module("benchmark_lifecycle_exact", LIFECYCLE)
+        cases = benchmark_module.discover_cases()
+        generation = lifecycle.generation_document(
+            Namespace(
+                provider="codex",
+                model="test-model",
+                reasoning_effort="medium",
+                token_encoding=None,
+                max_attempts=1,
+                cases_dir=None,
+            ),
+            cases,
+        )
+        results = []
+        for case in cases:
+            source = case.spec_path("baseline").read_text(encoding="utf-8")
+            semantic = case.spec_path("semantic").read_text(encoding="utf-8")
+            snapshot = generation["fixture_snapshot"][case.id]
+            spec_hash = benchmark_module.sha256_bytes(semantic.encode("utf-8"))
+            prompt_hash = benchmark_module.sha256_bytes(
+                lifecycle.generation_prompt(case, None).encode("utf-8")
+            )
+            provenance = {
+                "spec_sha256": spec_hash,
+                "prompt_sha256": prompt_hash,
+                "source_sha256": snapshot["source_sha256"],
+                "starter_sha256": snapshot["starter_sha256"],
+                "fixture_sha256": snapshot["fixture_sha256"],
+                "skill_sha256": generation["skill_sha256"],
+            }
+            provider = {
+                "return_code": 0,
+                "event_errors": [],
+                "usage": {
+                    "input_tokens": 100,
+                    "uncached_input_tokens": 100,
+                    "output_tokens": 10,
+                },
+            }
+            semantic_metrics = benchmark_module.text_metrics(semantic)
+            results.append({
+                "case": case.id,
+                "artifact": f"specs/{case.id}.spec.ctx",
+                "selected_attempt": 1,
+                "attempts": [{
+                    "attempt": 1,
+                    "semantic": semantic_metrics,
+                    "provenance": provenance,
+                    "provider": provider,
+                    "error": None,
+                }],
+                "source": benchmark_module.text_metrics(source),
+                "semantic": semantic_metrics,
+                "provenance": provenance,
+                "provider": provider,
+                "error": None,
+            })
+        generation["results"] = results
+        self.assertTrue(lifecycle.generation_report_is_credible(generation))
+
+        duplicate_replacing_missing = json.loads(json.dumps(generation))
+        duplicate_replacing_missing["results"][-1] = duplicate_replacing_missing[
+            "results"
+        ][0]
+        self.assertFalse(
+            lifecycle.generation_report_is_credible(duplicate_replacing_missing)
+        )
 
     def test_lifecycle_retry_accounting_includes_failed_attempts(self) -> None:
         lifecycle = load_module("benchmark_lifecycle", LIFECYCLE)
@@ -1300,6 +1644,42 @@ class GraderTest(unittest.TestCase):
                 "    return VALUE\n",
                 encoding="utf-8",
             )
+            grade = self.grader.grade(case_dir, workspace)
+            self.assertTrue(grade["task_success"], grade)
+
+    def test_namespace_package_overrides_standard_library_collision(self) -> None:
+        import email  # noqa: F401 - preload the colliding standard-library package
+
+        with tempfile.TemporaryDirectory(prefix="grader-namespace-") as directory:
+            root = Path(directory)
+            case_dir = root / "case"
+            workspace = root / "workspace"
+            package = workspace / "email"
+            case_dir.mkdir()
+            package.mkdir(parents=True)
+            (case_dir / "case.json").write_text(
+                json.dumps({"entrypoint": "email/service.py"}),
+                encoding="utf-8",
+            )
+            (case_dir / "tests.json").write_text(
+                json.dumps({
+                    "tests": [{
+                        "name": "namespace_relative_import",
+                        "acceptance": "A1",
+                        "call": "value",
+                        "expect": 13,
+                    }]
+                }),
+                encoding="utf-8",
+            )
+            (package / "models.py").write_text("VALUE = 13\n", encoding="utf-8")
+            (package / "service.py").write_text(
+                "from .models import VALUE\n\n"
+                "def value():\n"
+                "    return VALUE\n",
+                encoding="utf-8",
+            )
+
             grade = self.grader.grade(case_dir, workspace)
             self.assertTrue(grade["task_success"], grade)
 

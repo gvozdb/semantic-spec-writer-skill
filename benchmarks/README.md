@@ -31,12 +31,13 @@ passes deterministic tests.
 - Both variants describe the same task and use the same starter workspace.
 - Runs are paired by case and repetition, then shuffled with a recorded seed.
 - Every run gets a fresh isolated workspace containing only starter files.
-- Hidden tests and hidden expected outputs remain in the grader parent. Each
-  agent-written solution call runs separately in a network-disabled, read-only
-  Codex sandbox that can read the workspace runtime but not `tests.json`. Visible
-  `test_smoke.py` assertions and the exact verification command are intentionally
-  exposed equally to every arm. This is stronger than convention-only hiding,
-  but it is not a full VM boundary.
+- Implementation agents receive only the starter repository and run with
+  `workspace-write`. Hidden tests and expected outputs remain in the grader parent.
+  Each hidden solution call then runs separately in a network-disabled, read-only
+  Codex sandbox that can read the workspace runtime but not `tests.json`.
+- Visible verification runs on a disposable copy after the harness restores the
+  declared `verification_files` from the immutable fixture. Agent edits cannot
+  weaken the smoke test that determines task success.
 - Untrusted grading and verification are additionally wrapped in Linux PID,
   mount, and network namespaces via `unshare`. The private PID namespace prevents
   `/proc` from exposing the parent grader or host-process environments. These
@@ -48,6 +49,9 @@ passes deterministic tests.
 - The JSON result records environment versions, model, seed, raw usage totals,
   acceptance results, exact verification status, command-category telemetry,
   and failures.
+- Fixture, starter, specification, prompt, and verification hashes are captured
+  before the first arm, checked between arms, and revalidated when rendering a
+  report. Missing, duplicate, stale, or partially instrumented runs fail closed.
 - A publishable run requires every pair and at least three repetitions. The
   report labels smaller or mock runs as smoke tests.
 - Generated-spec runs keep every failed attempt and include all retry usage in

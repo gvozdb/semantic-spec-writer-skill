@@ -90,6 +90,14 @@ def discover_cases(
     wanted = set(selected or [])
     cases: list[BenchmarkCase] = []
     for manifest_path in manifest_paths:
+        if manifest_path.is_symlink() or manifest_path.parent.is_symlink():
+            raise ValueError(f"benchmark case path cannot be a symlink: {manifest_path}")
+        try:
+            manifest_path.resolve(strict=True).relative_to(cases_dir)
+        except ValueError as exc:
+            raise ValueError(
+                f"benchmark case path escapes cases directory: {manifest_path}"
+            ) from exc
         manifest = read_json(manifest_path)
         case_id = manifest.get("id") if isinstance(manifest, dict) else None
         if not isinstance(case_id, str) or CASE_ID.fullmatch(case_id) is None:
@@ -162,6 +170,7 @@ def sha256_bytes(value: bytes) -> str:
 
 
 def tree_sha256(path: Path) -> str:
+    assert_no_symlinks(path, "hashed tree")
     digest = hashlib.sha256()
     files = (
         candidate
@@ -176,6 +185,34 @@ def tree_sha256(path: Path) -> str:
         digest.update(item.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def symlink_paths(root: Path) -> list[Path]:
+    if root.is_symlink():
+        return [root]
+    if not root.exists():
+        return []
+    links: list[Path] = []
+    for directory, names, files in os.walk(root, followlinks=False):
+        parent = Path(directory)
+        for name in (*names, *files):
+            candidate = parent / name
+            if candidate.is_symlink():
+                links.append(candidate)
+    return sorted(links)
+
+
+def assert_no_symlinks(root: Path, label: str) -> None:
+    links = symlink_paths(root)
+    if links:
+        rendered = ", ".join(str(path) for path in links[:5])
+        raise ValueError(f"{label} cannot contain symlinks: {rendered}")
+
+
+def copy_fixture_tree(source: Path, destination: Path, **kwargs: Any) -> None:
+    assert_no_symlinks(source, "fixture tree")
+    shutil.copytree(source, destination, symlinks=True, **kwargs)
+    assert_no_symlinks(destination, "copied fixture tree")
 
 
 def compression_percent(baseline: int, semantic: int) -> float:
@@ -405,14 +442,22 @@ def run_verification(
     command = shlex.split(str(declared))
     if not command:
         raise ValueError(f"{case.id}: verification command is empty")
+    fixtures = verification_fixtures(case)
     with tempfile.TemporaryDirectory(prefix="semantic-spec-verify-") as directory:
         verification_workspace = Path(directory) / "workspace"
-        shutil.copytree(
+        copy_fixture_tree(
             workspace.resolve(),
             verification_workspace,
-            symlinks=True,
             ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
         )
+        for relative_path, source in fixtures:
+            destination = resolve_relative_file(
+                verification_workspace,
+                relative_path,
+                f"{case.id} verification fixture",
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
         environment = safe_environment()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         completed = (
@@ -427,10 +472,43 @@ def run_verification(
         )
     return {
         "command": str(declared),
+        "fixture_sha256": verification_fixture_sha256(fixtures),
         "return_code": completed.returncode,
         "stdout_tail": completed.stdout[-2000:],
         "stderr_tail": completed.stderr[-2000:],
     }
+
+
+def verification_fixtures(case: BenchmarkCase) -> list[tuple[str, Path]]:
+    values = case.manifest.get("verification_files", [])
+    if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+        raise ValueError(f"{case.id}: verification_files must be a list of paths")
+    if len(values) != len(set(values)):
+        raise ValueError(f"{case.id}: verification_files contains duplicates")
+    assert_no_symlinks(case.path / "starter", f"{case.id} starter fixture")
+    fixtures: list[tuple[str, Path]] = []
+    for value in values:
+        source = resolve_relative_file(
+            case.path / "starter",
+            value,
+            f"{case.id} verification fixture",
+        )
+        if source.is_symlink() or not source.is_file():
+            raise ValueError(
+                f"{case.id}: verification fixture must be a regular file: {value}"
+            )
+        fixtures.append((value, source))
+    return fixtures
+
+
+def verification_fixture_sha256(fixtures: list[tuple[str, Path]]) -> str:
+    digest = hashlib.sha256()
+    for relative_path, source in sorted(fixtures):
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def empty_grade(case: BenchmarkCase) -> dict[str, Any]:
@@ -553,6 +631,14 @@ def validate_case(case: BenchmarkCase) -> list[str]:
         return [
             f"benchmark case directory {case.path.name!r} does not match id {case.id!r}"
         ]
+    try:
+        assert_no_symlinks(case.path, f"{case.id} fixture")
+    except ValueError as exc:
+        return [str(exc)]
+    try:
+        verification_fixtures(case)
+    except ValueError as exc:
+        return [str(exc)]
     required = [
         case.path / "case.json",
         case.path / "baseline.md",
@@ -618,8 +704,8 @@ def validate_case(case: BenchmarkCase) -> list[str]:
 
     with tempfile.TemporaryDirectory(prefix=f"semantic-spec-reference-{case.id}-") as directory:
         reference_workspace = Path(directory) / "workspace"
-        shutil.copytree(case.path / "starter", reference_workspace)
-        shutil.copytree(
+        copy_fixture_tree(case.path / "starter", reference_workspace)
+        copy_fixture_tree(
             case.path / "reference",
             reference_workspace,
             dirs_exist_ok=True,
@@ -699,7 +785,7 @@ def safe_workspace(case: BenchmarkCase, root: Path) -> Path:
         raise ValueError(f"benchmark workspace escapes root: {case.id!r}") from exc
     if workspace.exists():
         raise RuntimeError(f"refusing to overwrite workspace: {workspace}")
-    shutil.copytree(
+    copy_fixture_tree(
         case.path / "starter",
         workspace,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
@@ -777,6 +863,41 @@ def benchmark_prompt(spec: str) -> str:
         f"{spec.rstrip()}\n"
         "--- END SPECIFICATION ---\n"
     )
+
+
+def benchmark_case_snapshot(
+    case: BenchmarkCase,
+    semantic_spec: str,
+) -> dict[str, Any]:
+    baseline = case.spec_path("baseline").read_text(encoding="utf-8")
+    variants = {"baseline": baseline, "semantic": semantic_spec}
+    return {
+        "fixture_sha256": tree_sha256(case.path),
+        "starter_sha256": tree_sha256(case.path / "starter"),
+        "verification_fixture_sha256": verification_fixture_sha256(
+            verification_fixtures(case)
+        ),
+        "variants": {
+            variant: sha256_bytes(text.encode("utf-8"))
+            for variant, text in variants.items()
+        },
+        "prompts": {
+            variant: sha256_bytes(benchmark_prompt(text).encode("utf-8"))
+            for variant, text in variants.items()
+        },
+        "metrics": {
+            variant: text_metrics(text) for variant, text in variants.items()
+        },
+    }
+
+
+def require_benchmark_case_snapshot(
+    case: BenchmarkCase,
+    semantic_spec: str,
+    expected: dict[str, Any],
+) -> None:
+    if benchmark_case_snapshot(case, semantic_spec) != expected:
+        raise RuntimeError(f"{case.id}: benchmark fixture changed during run")
 
 
 def parse_codex_events(stdout: str) -> dict[str, Any]:
@@ -1019,6 +1140,10 @@ def create_run_document(
             "reduced: hidden tests and hidden expected outputs stay in the grader "
             "parent; visible smoke assertions are shared equally across arms"
         ),
+        "fixture_snapshot": {
+            case.id: benchmark_case_snapshot(case, semantic_specs[case.id])
+            for case in cases
+        },
         "static": static_rows(cases, semantic_specs),
         "results": [],
     }
@@ -1063,6 +1188,10 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
 
     try:
         for index, (case, repetition, variant) in enumerate(jobs, start=1):
+            expected_snapshot = document["fixture_snapshot"][case.id]
+            require_benchmark_case_snapshot(
+                case, semantic_specs[case.id], expected_snapshot
+            )
             run_root = workspace_root / f"{index:03d}-{case.id}-{variant}-r{repetition}"
             run_root.mkdir(parents=True, exist_ok=False)
             workspace = safe_workspace(case, run_root)
@@ -1141,6 +1270,9 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                 if verification_failed:
                     grade["task_success"] = False
 
+            require_benchmark_case_snapshot(
+                case, semantic_specs[case.id], expected_snapshot
+            )
             error = "; ".join(run_errors) if run_errors else None
 
             usage = provider_result.get("usage", {})
@@ -1152,10 +1284,10 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                 "run_order": index,
                 "spec": text_metrics(spec),
                 "provenance": {
-                    "spec_sha256": sha256_bytes(spec.encode("utf-8")),
+                    "spec_sha256": expected_snapshot["variants"][variant],
                     "prompt_sha256": sha256_bytes(prompt.encode("utf-8")),
-                    "starter_sha256": tree_sha256(case.path / "starter"),
-                    "fixture_sha256": tree_sha256(case.path),
+                    "starter_sha256": expected_snapshot["starter_sha256"],
+                    "fixture_sha256": expected_snapshot["fixture_sha256"],
                 },
                 "provider": provider_result,
                 "verification": verification,
@@ -1276,7 +1408,7 @@ def paired_reductions(results: list[dict[str, Any]], field: str) -> list[float]:
             continue
         baseline = pair["baseline"]["provider"].get("usage", {}).get(field)
         semantic = pair["semantic"]["provider"].get("usage", {}).get(field)
-        if baseline:
+        if baseline and semantic is not None:
             reductions.append((baseline - semantic) / baseline * 100)
     return reductions
 
@@ -1341,6 +1473,228 @@ def format_delta(value: float | None) -> str:
     return f"{value:+.3f}%"
 
 
+def recorded_case_corpus(document: dict[str, Any]) -> list[BenchmarkCase]:
+    suite_name = document.get("case_suite", "cases")
+    if not isinstance(suite_name, str) or CASE_ID.fullmatch(suite_name) is None:
+        raise ValueError(f"invalid recorded case suite: {suite_name!r}")
+    suite_dir = (BENCHMARKS / suite_name).resolve(strict=True)
+    suite_dir.relative_to(BENCHMARKS.resolve())
+    return discover_cases(cases_dir=suite_dir)
+
+
+def implementation_report_is_credible(
+    document: dict[str, Any],
+    results: list[dict[str, Any]],
+) -> bool:
+    cases = document.get("cases")
+    repetitions = document.get("repetitions")
+    semantic_source = document.get("semantic_source", "curated")
+    snapshots = document.get("fixture_snapshot")
+    try:
+        corpus = recorded_case_corpus(document)
+        current = {
+            case.id: benchmark_case_snapshot(
+                case, case.spec_path("semantic").read_text(encoding="utf-8")
+            )
+            for case in corpus
+        }
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+    corpus_ids = {case.id for case in corpus}
+    if (
+        not isinstance(cases, list)
+        or not cases
+        or any(not isinstance(case, str) for case in cases)
+        or len(cases) != len(set(cases))
+        or set(cases) != corpus_ids
+        or not isinstance(repetitions, int)
+        or isinstance(repetitions, bool)
+        or repetitions < 3
+        or semantic_source not in {"curated", "generated"}
+        or not isinstance(snapshots, dict)
+        or set(snapshots) != corpus_ids
+        or not isinstance(document.get("static"), list)
+        or not results
+    ):
+        return False
+
+    hash_pattern = re.compile(r"^[0-9a-f]{64}$")
+    for case in corpus:
+        expected = snapshots.get(case.id)
+        actual = current[case.id]
+        if not isinstance(expected, dict):
+            return False
+        if semantic_source == "curated":
+            if expected != actual:
+                return False
+            continue
+        if (
+            set(expected) != {
+                "fixture_sha256",
+                "starter_sha256",
+                "verification_fixture_sha256",
+                "variants",
+                "prompts",
+                "metrics",
+            }
+            or expected.get("fixture_sha256") != actual["fixture_sha256"]
+            or expected.get("starter_sha256") != actual["starter_sha256"]
+            or expected.get("verification_fixture_sha256")
+            != actual["verification_fixture_sha256"]
+            or not isinstance(expected.get("variants"), dict)
+            or expected["variants"].get("baseline")
+            != actual["variants"]["baseline"]
+            or not hash_pattern.fullmatch(str(expected["variants"].get("semantic", "")))
+            or not isinstance(expected.get("prompts"), dict)
+            or expected["prompts"].get("baseline")
+            != actual["prompts"]["baseline"]
+            or not hash_pattern.fullmatch(str(expected["prompts"].get("semantic", "")))
+            or not isinstance(expected.get("metrics"), dict)
+            or expected["metrics"].get("baseline") != actual["metrics"]["baseline"]
+            or set(expected["metrics"].get("semantic", {}))
+            != {"bytes", "characters", "words", "lines"}
+            or any(
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+                for value in expected["metrics"]["semantic"].values()
+            )
+        ):
+            return False
+
+    if any(
+        not isinstance(row, dict) or not isinstance(row.get("case"), str)
+        for row in document["static"]
+    ):
+        return False
+    static_by_case = {row["case"]: row for row in document["static"]}
+    if len(static_by_case) != len(document["static"]) or set(static_by_case) != corpus_ids:
+        return False
+    cases_by_id = {case.id: case for case in corpus}
+    for case_id, row in static_by_case.items():
+        snapshot = snapshots[case_id]
+        baseline_metrics = snapshot["metrics"]["baseline"]
+        semantic_metrics = snapshot["metrics"]["semantic"]
+        expected_row = {
+            "case": case_id,
+            "title": cases_by_id[case_id].manifest["title"],
+            "baseline": baseline_metrics,
+            "semantic": semantic_metrics,
+            "byte_reduction_percent": compression_percent(
+                baseline_metrics["bytes"], semantic_metrics["bytes"]
+            ),
+            "word_reduction_percent": compression_percent(
+                baseline_metrics["words"], semantic_metrics["words"]
+            ),
+            "token_reduction_percent": None,
+        }
+        if row != expected_row:
+            return False
+
+    expected_keys = {
+        (case, repetition, variant)
+        for case in cases
+        for repetition in range(1, repetitions + 1)
+        for variant in VARIANTS
+    }
+    if any(not isinstance(result, dict) for result in results):
+        return False
+    actual_keys = [
+        (result.get("case"), result.get("repetition"), result.get("variant"))
+        for result in results
+    ]
+    if any(
+        not isinstance(case, str)
+        or not isinstance(repetition, int)
+        or isinstance(repetition, bool)
+        or not isinstance(variant, str)
+        for case, repetition, variant in actual_keys
+    ):
+        return False
+    run_orders = [result.get("run_order") for result in results]
+    if (
+        len(actual_keys) != len(set(actual_keys))
+        or set(actual_keys) != expected_keys
+        or any(
+            not isinstance(value, int) or isinstance(value, bool)
+            for value in run_orders
+        )
+        or sorted(run_orders) != list(range(1, len(results) + 1))
+    ):
+        return False
+
+    def nonnegative_int(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+    def nonnegative_number(value: Any) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        )
+
+    for result in results:
+        case = cases_by_id[result["case"]]
+        variant = result["variant"]
+        snapshot = snapshots[case.id]
+        provider = result.get("provider")
+        usage = provider.get("usage") if isinstance(provider, dict) else None
+        provenance = result.get("provenance")
+        expected_provenance = {
+            "spec_sha256": snapshot["variants"][variant],
+            "prompt_sha256": snapshot["prompts"][variant],
+            "starter_sha256": snapshot["starter_sha256"],
+            "fixture_sha256": snapshot["fixture_sha256"],
+        }
+        verification = result.get("verification")
+        verification_command = case.manifest.get("verification_command")
+        verification_valid = (
+            verification is None
+            if not verification_command
+            else isinstance(verification, dict)
+            and verification.get("command") == verification_command
+            and verification.get("fixture_sha256")
+            == snapshot["verification_fixture_sha256"]
+            and verification.get("return_code") == 0
+        )
+        grade = result.get("grade")
+        if (
+            result.get("pair_id") != f"{case.id}:r{result['repetition']}"
+            or result.get("spec") != snapshot["metrics"][variant]
+            or result.get("error") is not None
+            or provenance != expected_provenance
+            or not isinstance(provider, dict)
+            or provider.get("return_code") != 0
+            or provider.get("event_errors") != []
+            or not nonnegative_number(provider.get("duration_seconds"))
+            or not nonnegative_int(provider.get("tool_call_total"))
+            or not isinstance(usage, dict)
+            or any(
+                not nonnegative_int(usage.get(field))
+                for field in (
+                    "input_tokens",
+                    "uncached_input_tokens",
+                    "output_tokens",
+                )
+            )
+            or not verification_valid
+            or not isinstance(grade, dict)
+            or not isinstance(grade.get("task_success"), bool)
+            or not nonnegative_int(grade.get("passed"))
+            or not nonnegative_int(grade.get("total"))
+            or not nonnegative_int(grade.get("acceptance_passed"))
+            or not nonnegative_int(grade.get("acceptance_total"))
+        ):
+            return False
+
+    return bool(
+        document.get("provider") != "mock"
+        and document.get("model")
+        and document.get("reasoning_effort")
+    )
+
+
 def render_report(document: dict[str, Any]) -> str:
     results = document["results"]
     baseline = aggregate_variant(results, "baseline")
@@ -1349,23 +1703,7 @@ def render_report(document: dict[str, Any]) -> str:
     uncached_reductions = paired_reductions(results, "uncached_input_tokens")
     input_summary = paired_summary(results, "input_tokens")
     uncached_summary = paired_summary(results, "uncached_input_tokens")
-    complete_pairs = len(results) == (
-        len(document["cases"]) * document["repetitions"] * len(VARIANTS)
-    )
-    full_corpus = bool(document.get("full_corpus", (
-        set(document["cases"]) == {case.id for case in discover_cases()}
-    )))
-    credible = (
-        document["provider"] != "mock"
-        and bool(document.get("model"))
-        and bool(document.get("reasoning_effort"))
-        and document["repetitions"] >= 3
-        and full_corpus
-        and complete_pairs
-        and all(result.get("error") is None for result in results)
-        and all(result["provider"].get("return_code") == 0 for result in results)
-        and all("input_tokens" in result["provider"].get("usage", {}) for result in results)
-    )
+    credible = implementation_report_is_credible(document, results)
 
     lines = [
         "# Semantic Spec Writer Benchmark",
@@ -1525,8 +1863,9 @@ def render_report(document: dict[str, Any]) -> str:
         f"one reasoning effort (`{document.get('reasoning_effort') or 'provider default'}`).",
         "- The benchmark excludes the one-time cost of creating or reviewing a semantic spec.",
         "- Hidden tests and hidden expected outputs stay outside the solution process. "
-        "Visible smoke assertions are exposed equally to both arms. Each solution call runs "
-        "in a network-disabled read-only sandbox, but this is not a full VM boundary.",
+        "Visible smoke assertions are restored from immutable fixtures for both arms. "
+        "Implementation agents use workspace-write; hidden solution calls run in a "
+        "network-disabled read-only sandbox. This is not a full VM boundary.",
         "- More fixtures, models, and repetitions are required before making a general token "
         "or latency claim.",
         "",

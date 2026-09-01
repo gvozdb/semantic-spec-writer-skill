@@ -3,6 +3,7 @@
   "title": "Signed idempotent webhook dispatch",
   "entrypoint": "solution.py",
   "verification_command": "python3 -m unittest -q test_smoke.py",
+  "verification_files": ["test_smoke.py"],
   "execution_packet": true,
   "semantic_required_patterns": [
     "handle_webhook",
