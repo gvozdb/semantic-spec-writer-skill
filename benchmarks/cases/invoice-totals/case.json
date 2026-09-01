@@ -1,5 +1,8 @@
 {
   "id": "invoice-totals",
   "title": "Integer-cent invoice totals",
-  "entrypoint": "solution.py"
+  "entrypoint": "solution.py",
+  "semantic_required_patterns": [
+    "invoice\\[(?:\\\"|')items(?:\\\"|')\\]|items[^\\n]*key[^\\n]*invoice"
+  ]
 }

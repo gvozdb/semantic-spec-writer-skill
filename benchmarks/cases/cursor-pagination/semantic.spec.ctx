@@ -1,33 +1,21 @@
 spec
-meta:
-  file: cursor-pagination.spec.ctx
-  title: Canonical opaque cursor pagination
-  status: benchmark
+goal: implement canonical cursor pagination without mutating inputs
 
-terms:
-  R: ordered input records list
-  enc(n): strip trailing '=' from urlsafe_b64(JSON({"offset":n},sort_keys=true,separators=(',',':')).UTF8)
-  dec(c): padded urlsafe_b64 decode + JSON parse
-
-goal:
-  G1: return the requested page and canonical next cursor without mutating R
+scope:
+  edit: solution.py
+  contract: paginate(records, limit, cursor=None) -> {items,next_cursor}
 
 rules:
-  R1: R must be list; limit must be int and not bool and 1<=limit<=100; invalid limit -> ValueError "limit must be an integer from 1 to 100"
-  R2: cursor=null -> offset=0; otherwise dec(cursor) must be object with exactly {offset}, offset int not bool and >=0; invalid -> ValueError "invalid cursor"
-  R3: offset>len(R) -> ValueError "cursor offset is past the end of records"; offset=len(R) is valid
-  R4: items=R[offset:min(offset+limit,len(R))] in original order
-  R5: end=offset+len(items); next_cursor=enc(end) iff end<len(R), else null; output keys are exactly items,next_cursor
-  R6: preserve all inputs
+  R1: records must be list
+  R2: limit must be int, not bool, and 1..100; otherwise ValueError "limit must be an integer from 1 to 100"
+  R3: cursor=None -> offset=0
+  R4: other cursor -> restore URL-safe Base64 padding, decode UTF-8 JSON, require exactly {"offset": non-negative int-not-bool}; any failure -> ValueError "invalid cursor"
+  R5: offset>len(records) -> ValueError "cursor offset is past the end of records"; equality is a valid empty final page
+  R6: items=records[offset:offset+limit] with original order and identity
+  R7: next_offset=offset+len(items); next_cursor=None when next_offset>=len(records)
+  R8: otherwise next_cursor is URL-safe Base64 without trailing `=` of UTF-8 JSON {"offset":next_offset} using sorted keys and separators `(',', ':')`
+  R9: output has exactly items,next_cursor; preserve records and nested records
 
 acceptance:
-  A1:
-    given: an ordered list, valid limit, and optional cursor
-    when: paginate is called
-    then: output follows R2-R5 and cursor strings are exact enc values
-  A2:
-    given: invalid limit or cursor
-    when: paginate is called
-    then: raise the specified ValueError
-
-open_questions: []
+  A1: R3-R9 cover exact cursors, slicing, final/empty pages, and input preservation
+  A2: R1,R2,R4,R5 cover validation and exact errors

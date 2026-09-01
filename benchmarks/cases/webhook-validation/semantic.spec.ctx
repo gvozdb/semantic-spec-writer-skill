@@ -1,34 +1,20 @@
 spec
-meta:
-  file: webhook-validation.spec.ctx
-  title: Timestamped HMAC webhook validation
-  status: benchmark
+goal: validate timestamped HMAC webhook signatures without mutating inputs
 
-terms:
-  P: JSON payload
-  B: json.dumps(P,ensure_ascii=false,sort_keys=true,separators=(',',':')).UTF8
-  M(t): ASCII(t)+"."+B
-  H: hex_lower(HMAC-SHA256(UTF8(secret),M(t)))
-
-goal:
-  G1: return exactly {valid:boolean,reason:ok|malformed|expired|mismatch} without mutating inputs
+scope:
+  edit: solution.py
+  contract: validate_webhook(payload, signature_header, secret, now, tolerance=300) -> exactly {valid,reason}
 
 rules:
-  R1: header is comma-separated key=value; trim component/key/value; exactly one t and >=1 v1; no '='-less component; duplicate t -> malformed
-  R2: t is non-empty ASCII digits; every v1 is exactly 64 lowercase hex; other well-formed keys ignored
-  R3: nonempty string secret, string header, int-not-bool now/tolerance, tolerance>=0; otherwise malformed
-  R4: abs(now-int(t))>tolerance -> {valid:false,reason:expired}
-  R5: current well-formed header -> compare H to every v1 with constant-time comparison; any match -> {valid:true,reason:ok}, else mismatch
-  R6: canonical body/message/H follow terms exactly; use no clock/randomness/network
+  R1: secret is non-empty string; signature_header is string; now/tolerance are int-not-bool; tolerance>=0; otherwise malformed
+  R2: split header by comma and trim components, keys, values; every component has `=`; require exactly one non-empty ASCII-decimal t and at least one v1
+  R3: every v1 is exactly 64 lowercase hex; duplicate t or any R2/R3 failure -> malformed; ignore other well-formed keys
+  R4: timestamp=int(t); abs(now-timestamp)>tolerance -> expired; equality is accepted
+  R5: canonical body = UTF-8 JSON of payload with sorted keys, no spaces via separators `(',', ':')`, ensure_ascii=False
+  R6: signed bytes = ASCII timestamp + `.` + canonical body; expected signature = lowercase hex HMAC-SHA256 using UTF-8 secret
+  R7: compare expected signature with every v1 using constant-time comparison; any match -> {valid:true,reason:"ok"}; otherwise mismatch
+  R8: malformed/expired/mismatch -> {valid:false,reason:<reason>}; use no clock, randomness, or network
 
 acceptance:
-  A1:
-    given: a current well-formed signed header
-    when: validate_webhook is called
-    then: accept if any v1 matches the exact HMAC
-  A2:
-    given: malformed, stale, or nonmatching input
-    when: validate_webhook is called
-    then: return the reason required by R1-R5
-
-open_questions: []
+  A1: R4-R7 cover exact canonicalization, current timestamps, rotated signatures, and HMAC success
+  A2: R1-R4,R7,R8 cover malformed headers, stale timestamps, and current mismatches

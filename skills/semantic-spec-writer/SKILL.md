@@ -1,271 +1,153 @@
 ---
 name: semantic-spec-writer
-description: Write or rewrite plans, technical specs, product specs, architecture notes, implementation plans, and acceptance criteria as compact semantic specifications for LLM implementation. Use when a user asks to create, compress, formalize, structure, or convert planning/technical Markdown into a token-efficient, implementation-ready format.
+description: Write or rewrite plans, technical specs, architecture notes, implementation plans, and acceptance criteria as compact, self-contained execution documents for LLM agents. Use when a user asks to create, compress, formalize, structure, or convert planning and technical Markdown.
 ---
 
 # Semantic Spec Writer
 
-Write plans and technical specs as compact semantic specs. The output must be readable by an implementation agent without this skill.
+Produce `.plan.ctx` and `.spec.ctx` files that an implementation agent can use without loading this skill.
 
-## Core rules
+## Mode
 
-- First line must be `plan` or `spec`.
-- Use `.plan.ctx` for plans and `.spec.ctx` for specs unless the user gives another file convention.
-- Keep the file self-describing: define local terms before using abbreviations.
-- Use only blocks that are useful for the current doc. Do not force domain-specific blocks.
-- Create custom blocks when the task needs them. Keep names obvious.
-- Prefer compact semantic structure over prose.
-- Preserve meaning. Put unknowns in `open_questions`, not in invented requirements.
-- Use the user's language for human text. Keep compact keys in English when useful.
-- Keep the first line plain: `plan` or `spec`. Do not add suffixes or meta-rules for the language itself.
+- New document: write the final semantic artifact directly from the request and grounded repository facts. Do not create a prose draft first.
+- Existing document: convert it only as requested, preserving source meaning and identifiers. The final artifact must be shorter than the source.
+- Handoff or repeated use: optimize for independent execution by another agent or later turn.
 
-## Comments
+Do not claim that conversion saves total tokens for a one-off implementation. It adds an authoring step; its economy comes from a smaller reusable context and less implementation ambiguity.
 
-Free-form text is allowed only in the rare case where fields cannot preserve critical nuance.
+## Target
 
-Rules:
+Optimize the whole implementation loop, not character count alone:
 
-- Start every free-form line with `#`.
-- Put the comment on a new line under the exact item it explains.
-- Keep it short: 1 to 3 lines.
-- Do not use comments instead of `rules`, `flows`, `tasks`, `acceptance`, or `open_questions`.
+- preserve every behavior, constraint, edge case, and exact identifier;
+- remove narrative, repetition, decorative metadata, and generic advice;
+- expose the shortest reliable path from requirement to edit to verification;
+- prefer direct language over shorthand that requires interpretation.
 
-Example:
+A smaller file is useful only when it remains faster to execute correctly. When converting an existing document, plan the compact structure before writing and avoid expanding the source. Do not add tool loops or repeated rewrites only to chase file size.
 
-```txt
-R4: Payment.status=settled -> set Invoice.status=paid
-# "settled" means bank settlement confirmed, not payment intent created.
-```
+## Token discipline
 
-## Minimal syntax
+- Read each supplied source once unless a missing fact requires a targeted lookup.
+- Inspect only files needed to ground scope, interfaces, and verification.
+- Write one final artifact. Make it shorter in the initial write. For conversion, run `scripts/check_conversion.py SOURCE OUTPUT` from this skill directory once. When the target tokenizer is known and `tiktoken` is available, pass `--encoding NAME`. If the check fails, remove redundancy once and run it once more; never continue a size-chasing loop. Do not emit an outline, draft, conversion notes, size report, or explanation unless requested.
+- Do not copy repository facts that the implementation agent can obtain from the exact target file without search. Include facts that prevent a wrong edit or extra discovery.
+- Prefer exact paths and one runnable verification command over generic implementation advice.
 
-Use readable, obvious DSL. Do not rely on hidden semantics.
+## Format
 
-Common patterns:
+- Start with plain `plan` or `spec`.
+- Use `.plan.ctx` for plans and `.spec.ctx` for specs unless the project has another convention.
+- Use obvious local block names. They are labels, not reserved language keywords.
+- Include only blocks that carry information. Do not emit empty sections.
+- Combine target, scope, and contract facts when separate blocks would repeat the same information.
+- Preserve file paths, symbols, API routes, fields, tables, env vars, commands, statuses, roles, and error text exactly.
+- Preserve field ownership and nesting exactly. Match field notation to the implementation language: for Python JSON/maps use `event["payment_id"]`, not `event.payment_id`. Never invent a `data`, `payload`, or other wrapper that the source does not define.
+- Treat `.ctx` as plain text, not Markdown. Do not wrap ordinary identifiers in backticks, bold, or other presentation markup. Use backticks only for runnable commands under `verify`.
+- Define a local term only when it removes real repetition. Prefer descriptive terms; avoid one-letter aliases and invented notation.
+- Add IDs only when another item references them.
+- Use familiar expressions such as `x=true`, `x in [a,b]`, and `condition -> result`. Do not rely on hidden syntax.
+- Use a short `#` comment only when structured fields would lose critical nuance.
+- Group parallel validations, output fields, and exact errors under one compact mapping instead of repeating the same sentence frame.
+- After field ownership is established, use short unambiguous labels in validation and error maps instead of repeating the full owner path.
+- In an error map, let the block carry the repeated grammar. Prefer `field: condition | ErrorType "exact message"` over repeating `invalid owner.field -> ErrorType` on every line.
+- Keep one independently testable rule per line. A shared mapping may hold related field cases when its grammar is consistent.
+- Use `A*` IDs only once, under `acceptance`. Do not reuse acceptance IDs as rule or task IDs.
 
-```txt
-!X                    false or missing
-X=V                   equals
-X!=V                  not equals
-X in [A,B]            one of
-A AND B               both
-A OR B                either
-condition -> action   rule
-R1? stop              if R1 matches, stop flow
-```
+## Grounding
 
-Examples:
+When a codebase is available, inspect it before writing. Capture known edit scope, existing interfaces, constraints, and runnable verification commands. Include `verify` only for an exact command or existing named check; do not invent verification scenarios. Do not guess file names or architecture.
 
-```txt
-R1: !U.auth -> deny 401
-R2: U.role!=admin -> deny 403
-R3: U.auth AND U.role=admin -> allow /admin
-```
+Unknown decisions belong in `open_questions`. Omit that block when there are no unknowns.
 
-Use block form only when one line is not enough:
+## Information order
 
-```txt
-R4:
-  when: Payment.status=settled
-  then:
-    - set Invoice.status=paid
-    - emit invoice.paid
-  src: S2.P4
-```
+Put information in the order an implementation agent needs it. Use only the relevant parts:
 
-## IDs and tags
+1. goal or target, including exact edit scope when known;
+2. contracts not already stated by the target;
+3. rules, invariants, states, or flows;
+4. ordered work only where dependencies matter;
+5. verification commands and observable acceptance;
+6. unresolved questions.
 
-Use stable IDs where references matter:
+Exact scope and verification usually save more agent work than aggressive prose compression.
 
-```txt
-G1 goal
-NG1 non-goal
-T1 task
-R1 rule
-F1 flow
-A1 acceptance
-Q1 open question
-```
+## Compression rules
 
-Optional tags are allowed when they reduce ambiguity:
+- State each fact once.
+- Merge duplicate requirements.
+- Omit a block when its content is already carried by another line.
+- Make acceptance reference existing rule, contract, and verification IDs instead of restating their prose.
+- Keep acceptance as references only when the referenced blocks already state the observable behavior.
+- Keep reasons only when they change an implementation decision.
+- Replace vague verbs such as `improve`, `support`, `handle`, `optimize`, and `fix` with observable outcomes.
+- Keep rare but consequential edge cases. Never drop them to make the file shorter.
+- Do not encode ordinary requirements as formulas merely to reduce words.
+- Prefer an exact source-derived integer formula over a longer prose description when it is easier to execute correctly.
 
-```txt
-R1 [must,p0]: !U.auth -> deny 401
-Q1 [blocking]: auth method unknown
-T3 [risk]: migrate existing sessions
-```
+## Examples
 
-## Terms
-
-Declare local terms and abbreviations near the top.
-
-```txt
-terms:
-  U: User
-  P: Project
-  owner: U.id=P.owner_id
-```
-
-If a domain needs special concepts, define them here or in an obvious custom block. Do not bake every possible domain concept into the language.
-
-## Plan shape
-
-Use this for implementation plans, refactors, migrations, roadmaps, and task breakdowns.
-
-```txt
-plan
-meta:
-  file: feature.plan.ctx
-  title:
-  status: draft
-  source:
-
-terms:
-
-goal:
-  G1:
-
-non_goals:
-  NG1:
-
-facts:
-  C1:
-
-assumptions:
-  AS1:
-
-tasks:
-  T1:
-    do:
-    depends_on:
-    files:
-    risk:
-    verify:
-
-order:
-  - T1
-
-acceptance:
-  A1:
-
-open_questions:
-  Q1:
-```
-
-## Spec shape
-
-Use this for feature specs, product specs, technical specs, architecture notes, and behavior contracts.
+Implementation spec:
 
 ```txt
 spec
-meta:
-  file: feature.spec.ctx
-  title:
-  status: draft
-  source:
-
-terms:
-
-goal:
-  G1:
-
-non_goals:
-  NG1:
-
-entities:
-  E1 User:
-    id:
-    email:
+target: [src/payments.ts,tests/payments.test.ts] :: make POST /payments idempotent by Idempotency-Key
+keep: response schema, auth behavior
 
 rules:
-  R1: !U.auth -> deny 401
+  R1: key scope is user_id
+  R2: same user + same key + same body -> replay original status and body
+  R3: persist result before returning success
 
-flows:
-  F1 login:
-    1: validate input.email,input.password
-    2: R1? stop
-    3: create Session
-    4: return Session
+errors:
+  E1: missing Idempotency-Key -> 400 idempotency_key_required
+  E2: same key + different body -> 409 idempotency_conflict
 
-tasks:
-  T1:
-    do:
-    verify:
+verify:
+  V1: `pnpm test tests/payments.test.ts`
 
 acceptance:
-  A1:
-    given:
-    when:
-    then:
-
-open_questions:
-  Q1:
+  A1: R1,R2,R3,E1,E2 -> V1
 ```
 
-## Optional patterns
-
-Use these only when the content needs them.
+Parallel validation map:
 
 ```txt
-inv:
-  INV1: User.email unique
-
-pre:
-  PRE1: User.exists AND !Session.exists
-
-post:
-  POST1: Session.user_id=User.id
-
-state:
-  Order:
-    draft -> paid: payment.settled
-    paid -> refunded: refund.done
-
-trace:
-  R1 -> T2 -> A1
+validation:
+  retries: int>=0 | ValueError "retries must be non-negative"
+  timeout: int>0 | ValueError "timeout must be positive"
 ```
 
-Custom examples:
+Implementation plan:
 
 ```txt
-api:
-  POST /login:
-    input: email,password
-    ok: Session
-    err: 400,401
+plan
+goal: move session storage from memory to Redis without changing API behavior
 
-db:
-  users.email: unique index
+facts:
+  current store: src/session/memory.ts
+  contract tests: tests/session.contract.test.ts
 
-events:
-  user.logged_in:
-    after: Session created
+tasks:
+  T1: add Redis adapter behind existing SessionStore interface
+  T2: run contract tests against memory and Redis adapters
+  T3: switch composition root after T2 passes
+
+verify:
+  V1: `pnpm test tests/session.contract.test.ts`
 ```
-
-## Conversion workflow
-
-When converting Markdown into `.ctx`:
-
-1. Keep only meaning-bearing content.
-2. Convert requirements into `rules`, `flows`, `tasks`, `acceptance`, or custom blocks.
-3. Merge duplicates.
-4. Keep exact names for files, APIs, DB tables, fields, env vars, roles, statuses, routes, commands, and error codes.
-5. Put unclear parts into `open_questions`.
-6. Use `#` comments only for critical nuance that cannot fit into fields.
 
 ## Quality gate
 
-Before final output, check:
+Before finishing, verify:
 
-- First line is `plan` or `spec`.
-- No useless mandatory blocks.
-- Terms are defined before abbreviations.
-- Functional behavior appears as rules, flows, tasks, acceptance, or custom blocks.
-- `acceptance` exists for implementation-facing docs.
-- `open_questions` exists, even if empty: `open_questions: []`.
-- Free text appears only as short `#` comments.
-- Vague words like `improve`, `support`, `handle`, `optimize`, `fix` are replaced with observable behavior or moved to `open_questions`.
+- a new implementation agent can act without this skill or unstated context;
+- every line changes scope, behavior, implementation order, or verification;
+- no requirement is duplicated or replaced by an undefined abbreviation;
+- known files, interfaces, and commands are exact;
+- acceptance is observable and traces to the stated contract;
+- every field still has the same owner and nesting as in the source;
+- the result is shorter by removing redundancy, not by obscuring meaning.
 
-## Response style
-
-Output the semantic spec first. Add notes only when assumptions or open questions materially affect implementation.
+Output the semantic document first. Add separate notes only for unresolved decisions that materially block implementation.

@@ -1,28 +1,29 @@
 spec
-meta:
-  id: inventory-reservation
-  title: atomic inventory reservation
+goal: reserve inventory atomically without mutating either input
 
-terms:
-  I: SKU->stock map; canonical SKU keys are case-sensitive; stock is non-negative int
-  Q: {reservation_id, items:[{sku,quantity}]}
-  U: trim whitespace; SKU case remains sensitive
-
-api:
-  reserve_inventory(I,Q) -> success|failure
+scope:
+  edit: solution.py
+  contract: reserve_inventory(inventory, request) -> success|failure
 
 rules:
-  R1: validate I object and all stock values non-negative int; bool is not int
-  R2: Q.reservation_id non-empty string; output U(id); Q.items list; item object; U(item.sku) non-empty; quantity positive int
-  R3: aggregate quantities by distinct U(sku), preserving first-seen SKU order
-  R4: available(sku)=I[sku] or 0; success iff every aggregate <= available
-  R5: success -> {ok:true,reservation_id:U(id),inventory=copy(I) with aggregates subtracted,reserved=[{sku,quantity} in first-seen order]}
-  R6: failure -> {ok:false,reservation_id:U(id),inventory=copy(I),shortages=[{sku,requested,available} for insufficient SKUs in first-seen order]}; no partial decrement/no reserved
-  R7: empty items -> successful no-op; preserve I,Q; errors: inventory must be an object | inventory quantities must be non-negative integers | reservation_id must be a non-empty string | items must be a list | each item must be an object | sku must be a non-empty string | quantity must be a positive integer
+  R1: inventory is an object mapping case-sensitive SKU keys to non-negative int-not-bool stock
+  R2: trim reservation_id and every requested SKU; both must remain non-empty strings; quantity is positive int-not-bool
+  R3: items must be list of objects; combine repeated trimmed SKUs and preserve first-seen distinct order
+  R4: missing SKU availability=0; succeed only when every aggregate quantity is available
+  R5: success -> exactly {ok:true,reservation_id,inventory,reserved}; inventory is a full copy with aggregates subtracted; reserved=[{sku,quantity}] in first-seen order
+  R6: failure -> exactly {ok:false,reservation_id,inventory,shortages}; inventory is unchanged copy; shortages=[{sku,requested,available}] for insufficient SKUs in first-seen order; no reserved and no partial decrement
+  R7: empty items -> successful no-op
+
+errors:
+  inventory shape: ValueError "inventory must be an object"
+  stock: ValueError "inventory quantities must be non-negative integers"
+  reservation_id: ValueError "reservation_id must be a non-empty string"
+  items: ValueError "items must be a list"
+  item: ValueError "each item must be an object"
+  sku: ValueError "sku must be a non-empty string"
+  quantity: ValueError "quantity must be a positive integer"
 
 acceptance:
-  A1: trim IDs/SKUs, aggregate duplicates, retain first-seen output order and case sensitivity
-  A2: make success all-or-nothing and report every shortage without mutation
-  A3: preserve all inventory keys, return exact JSON shapes, and reject invalid inputs/messages
-
-open_questions: []
+  A1: R2,R3 preserve normalization, aggregation, case sensitivity, and order
+  A2: R4-R6 enforce all-or-nothing reservation and complete shortage reporting
+  A3: R1,R2,R5-R7 and errors preserve inputs, exact shapes, keys, and messages

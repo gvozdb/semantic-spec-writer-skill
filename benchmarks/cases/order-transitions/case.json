@@ -1,5 +1,11 @@
 {
   "id": "order-transitions",
   "title": "Order lifecycle event transitions",
-  "entrypoint": "solution.py"
+  "entrypoint": "solution.py",
+  "semantic_required_patterns": [
+    "event\\[(?:\\\"|')type(?:\\\"|')\\]|event type",
+    "order\\[(?:\\\"|')status(?:\\\"|')\\]|current status|order status",
+    "event\\[(?:\\\"|')payment_id(?:\\\"|')\\]|event fields[^\\n]*payment_id|payment_id[^\\n]*from (the )?event",
+    "event\\[(?:\\\"|')tracking_number(?:\\\"|')\\]|event fields[^\\n]*tracking_number|tracking_number[^\\n]*from (the )?event"
+  ]
 }

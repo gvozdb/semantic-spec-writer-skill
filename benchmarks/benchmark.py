@@ -74,8 +74,7 @@ def discover_cases(selected: Iterable[str] | None = None) -> list[BenchmarkCase]
     return cases
 
 
-def document_metrics(path: Path) -> dict[str, int]:
-    text = path.read_text(encoding="utf-8")
+def text_metrics(text: str) -> dict[str, int]:
     return {
         "bytes": len(text.encode("utf-8")),
         "characters": len(text),
@@ -84,13 +83,24 @@ def document_metrics(path: Path) -> dict[str, int]:
     }
 
 
+def document_metrics(path: Path) -> dict[str, int]:
+    return text_metrics(path.read_text(encoding="utf-8"))
+
+
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
 def tree_sha256(path: Path) -> str:
     digest = hashlib.sha256()
-    for item in sorted(candidate for candidate in path.rglob("*") if candidate.is_file()):
+    files = (
+        candidate
+        for candidate in path.rglob("*")
+        if candidate.is_file()
+        and "__pycache__" not in candidate.parts
+        and candidate.suffix != ".pyc"
+    )
+    for item in sorted(files):
         digest.update(item.relative_to(path).as_posix().encode("utf-8"))
         digest.update(b"\0")
         digest.update(item.read_bytes())
@@ -102,11 +112,39 @@ def compression_percent(baseline: int, semantic: int) -> float:
     return round((baseline - semantic) / baseline * 100, 2) if baseline else 0.0
 
 
-def static_rows(cases: list[BenchmarkCase]) -> list[dict[str, Any]]:
+def load_token_encoder(name: str | None) -> Any | None:
+    if not name:
+        return None
+    try:
+        import tiktoken
+
+        return tiktoken.get_encoding(name)
+    except (ImportError, OSError, ValueError) as exc:
+        raise RuntimeError(f"cannot load tokenizer {name}: {exc}") from exc
+
+
+def static_rows(
+    cases: list[BenchmarkCase],
+    semantic_specs: dict[str, str] | None = None,
+    token_encoder: Any | None = None,
+) -> list[dict[str, Any]]:
     rows = []
     for case in cases:
         baseline = document_metrics(case.spec_path("baseline"))
-        semantic = document_metrics(case.spec_path("semantic"))
+        semantic = (
+            text_metrics(semantic_specs[case.id])
+            if semantic_specs is not None
+            else document_metrics(case.spec_path("semantic"))
+        )
+        if token_encoder is not None:
+            baseline_text = case.spec_path("baseline").read_text(encoding="utf-8")
+            semantic_text = (
+                semantic_specs[case.id]
+                if semantic_specs is not None
+                else case.spec_path("semantic").read_text(encoding="utf-8")
+            )
+            baseline["tokens"] = len(token_encoder.encode(baseline_text))
+            semantic["tokens"] = len(token_encoder.encode(semantic_text))
         rows.append({
             "case": case.id,
             "title": case.manifest["title"],
@@ -118,11 +156,36 @@ def static_rows(cases: list[BenchmarkCase]) -> list[dict[str, Any]]:
             "word_reduction_percent": compression_percent(
                 baseline["words"], semantic["words"]
             ),
+            "token_reduction_percent": (
+                compression_percent(baseline["tokens"], semantic["tokens"])
+                if token_encoder is not None
+                else None
+            ),
         })
     return rows
 
 
 def render_static_markdown(rows: list[dict[str, Any]]) -> str:
+    include_tokens = bool(rows and rows[0].get("token_reduction_percent") is not None)
+    if include_tokens:
+        lines = [
+            "| Case | Baseline tokens | Semantic tokens | Token reduction | Byte reduction | Word reduction |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for row in rows:
+            lines.append(
+                f"| `{row['case']}` | {row['baseline']['tokens']} | "
+                f"{row['semantic']['tokens']} | {row['token_reduction_percent']:.2f}% | "
+                f"{row['byte_reduction_percent']:.2f}% | {row['word_reduction_percent']:.2f}% |"
+            )
+        lines.append(
+            f"| **Median** |  |  | "
+            f"**{statistics.median(r['token_reduction_percent'] for r in rows):.2f}%** | "
+            f"**{statistics.median(r['byte_reduction_percent'] for r in rows):.2f}%** | "
+            f"**{statistics.median(r['word_reduction_percent'] for r in rows):.2f}%** |"
+        )
+        return "\n".join(lines) + "\n"
+
     lines = [
         "| Case | Baseline bytes | Semantic bytes | Byte reduction | Word reduction |",
         "|---|---:|---:|---:|---:|",
@@ -155,6 +218,7 @@ def run_grader(case: BenchmarkCase, workspace: Path) -> dict[str, Any]:
         capture_output=True,
         text=True,
         timeout=30,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -162,6 +226,57 @@ def run_grader(case: BenchmarkCase, workspace: Path) -> dict[str, Any]:
             f"{completed.stderr.strip()}"
         )
     return json.loads(completed.stdout)
+
+
+def block_ids(text: str, block: str, prefix: str) -> list[str]:
+    ids: list[str] = []
+    inside = False
+    pattern = re.compile(rf"^\s+({re.escape(prefix)}\d+):")
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            inside = line.strip() == f"{block}:"
+            continue
+        if inside:
+            match = pattern.match(line)
+            if match:
+                ids.append(match.group(1))
+    return ids
+
+
+def validate_semantic_text(case: BenchmarkCase, semantic: str) -> list[str]:
+    errors: list[str] = []
+    if not semantic.startswith("spec\n"):
+        errors.append(f"{case.id}: semantic spec must start with 'spec'")
+    entrypoint = str(case.manifest["entrypoint"])
+    if entrypoint not in semantic:
+        errors.append(f"{case.id}: semantic spec lacks exact entrypoint {entrypoint}")
+    for pattern in case.manifest.get("semantic_required_patterns", []):
+        if re.search(pattern, semantic, re.MULTILINE | re.IGNORECASE) is None:
+            errors.append(
+                f"{case.id}: semantic spec lacks required pattern {pattern}"
+            )
+
+    suite = read_json(case.path / "tests.json")
+    if not suite.get("tests"):
+        errors.append(f"{case.id}: test suite is empty")
+        return errors
+    acceptance_ids = {test.get("acceptance") for test in suite["tests"]}
+    if None in acceptance_ids:
+        errors.append(f"{case.id}: every test must map to an acceptance id")
+    defined_acceptance_list = block_ids(semantic, "acceptance", "A")
+    defined_acceptance_ids = set(defined_acceptance_list)
+    duplicates = sorted({item for item in defined_acceptance_list if defined_acceptance_list.count(item) > 1})
+    if duplicates:
+        errors.append(f"{case.id}: duplicate acceptance ids: {', '.join(duplicates)}")
+    unmapped = defined_acceptance_ids - acceptance_ids
+    if unmapped:
+        errors.append(
+            f"{case.id}: acceptance ids without tests: {', '.join(sorted(unmapped))}"
+        )
+    for acceptance_id in sorted(item for item in acceptance_ids if item):
+        if acceptance_id not in semantic:
+            errors.append(f"{case.id}: semantic spec lacks {acceptance_id}")
+    return errors
 
 
 def validate_case(case: BenchmarkCase) -> list[str]:
@@ -181,30 +296,14 @@ def validate_case(case: BenchmarkCase) -> list[str]:
         return errors
 
     semantic = case.spec_path("semantic").read_text(encoding="utf-8")
-    if not semantic.startswith("spec\n"):
-        errors.append(f"{case.id}: semantic spec must start with 'spec'")
-    if "open_questions:" not in semantic:
-        errors.append(f"{case.id}: semantic spec lacks open_questions")
+    errors.extend(validate_semantic_text(case, semantic))
 
     suite = read_json(case.path / "tests.json")
-    if not suite.get("tests"):
-        errors.append(f"{case.id}: test suite is empty")
-        return errors
     acceptance_ids = {test.get("acceptance") for test in suite["tests"]}
-    if None in acceptance_ids:
-        errors.append(f"{case.id}: every test must map to an acceptance id")
     baseline = case.spec_path("baseline").read_text(encoding="utf-8")
-    defined_acceptance_ids = set(re.findall(r"^\s+(A\d+):", semantic, re.MULTILINE))
-    unmapped = defined_acceptance_ids - acceptance_ids
-    if unmapped:
-        errors.append(
-            f"{case.id}: acceptance ids without tests: {', '.join(sorted(unmapped))}"
-        )
     for acceptance_id in sorted(item for item in acceptance_ids if item):
         if acceptance_id not in baseline:
             errors.append(f"{case.id}: baseline lacks {acceptance_id}")
-        if acceptance_id not in semantic:
-            errors.append(f"{case.id}: semantic spec lacks {acceptance_id}")
 
     reference_grade = run_grader(case, case.path / "reference")
     if reference_grade["passed"] != reference_grade["total"]:
@@ -225,11 +324,41 @@ def validate(cases: list[BenchmarkCase]) -> list[str]:
     return errors
 
 
+def load_semantic_specs(
+    cases: list[BenchmarkCase], directory: Path | None
+) -> dict[str, str]:
+    if directory is None:
+        return {
+            case.id: case.spec_path("semantic").read_text(encoding="utf-8")
+            for case in cases
+        }
+    directory = directory.resolve()
+    if not directory.is_dir():
+        raise ValueError(f"semantic spec directory does not exist: {directory}")
+    specs: dict[str, str] = {}
+    errors: list[str] = []
+    for case in cases:
+        path = directory / f"{case.id}.spec.ctx"
+        if not path.is_file():
+            errors.append(f"{case.id}: missing generated spec {path}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        specs[case.id] = text
+        errors.extend(validate_semantic_text(case, text))
+    if errors:
+        raise ValueError("generated semantic validation failed:\n" + "\n".join(errors))
+    return specs
+
+
 def safe_workspace(case: BenchmarkCase, root: Path) -> Path:
     workspace = root / case.id
     if workspace.exists():
         raise RuntimeError(f"refusing to overwrite workspace: {workspace}")
-    shutil.copytree(case.path / "starter", workspace)
+    shutil.copytree(
+        case.path / "starter",
+        workspace,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
     subprocess.run(
         ["git", "init", "--quiet"],
         cwd=workspace,
@@ -450,7 +579,11 @@ def estimate_cost(usage: dict[str, int], pricing: dict[str, float]) -> float | N
     return round(cost, 8)
 
 
-def create_run_document(args: argparse.Namespace, cases: list[BenchmarkCase]) -> dict[str, Any]:
+def create_run_document(
+    args: argparse.Namespace,
+    cases: list[BenchmarkCase],
+    semantic_specs: dict[str, str],
+) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -468,8 +601,9 @@ def create_run_document(args: argparse.Namespace, cases: list[BenchmarkCase]) ->
             "git_commit": git_commit(),
         },
         "cases": [case.id for case in cases],
+        "semantic_source": "generated" if args.semantic_dir else "curated",
         "oracle_exposure": "possible: grader files are outside the workspace but not container-isolated",
-        "static": static_rows(cases),
+        "static": static_rows(cases, semantic_specs),
         "results": [],
     }
 
@@ -479,6 +613,7 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
     errors = validate(cases)
     if errors:
         raise RuntimeError("benchmark validation failed:\n" + "\n".join(errors))
+    semantic_specs = load_semantic_specs(cases, args.semantic_dir)
 
     output = args.output or RESULTS_DIR / (
         datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ") + ".json"
@@ -486,7 +621,7 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
     output = output.resolve()
     if output.exists() and not args.force:
         raise RuntimeError(f"refusing to overwrite result: {output}; pass --force to replace it")
-    document = create_run_document(args, cases)
+    document = create_run_document(args, cases, semantic_specs)
     pairs = [
         (case, repetition)
         for case in cases
@@ -514,7 +649,11 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
             run_root = workspace_root / f"{index:03d}-{case.id}-{variant}-r{repetition}"
             run_root.mkdir(parents=True, exist_ok=False)
             workspace = safe_workspace(case, run_root)
-            spec = case.spec_path(variant).read_text(encoding="utf-8")
+            spec = (
+                case.spec_path("baseline").read_text(encoding="utf-8")
+                if variant == "baseline"
+                else semantic_specs[case.id]
+            )
             prompt = benchmark_prompt(spec)
             print(
                 f"[{index}/{len(jobs)}] {case.id} {variant} repetition={repetition}",
@@ -567,7 +706,7 @@ def execute_benchmark(args: argparse.Namespace) -> Path:
                 "variant": variant,
                 "repetition": repetition,
                 "run_order": index,
-                "spec": document_metrics(case.spec_path(variant)),
+                "spec": text_metrics(spec),
                 "provenance": {
                     "spec_sha256": sha256_bytes(spec.encode("utf-8")),
                     "prompt_sha256": sha256_bytes(prompt.encode("utf-8")),
@@ -740,11 +879,13 @@ def render_report(document: dict[str, Any]) -> str:
     complete_pairs = len(results) == (
         len(document["cases"]) * document["repetitions"] * len(VARIANTS)
     )
+    full_corpus = set(document["cases"]) == {case.id for case in discover_cases()}
     credible = (
         document["provider"] != "mock"
         and bool(document.get("model"))
         and bool(document.get("reasoning_effort"))
         and document["repetitions"] >= 3
+        and full_corpus
         and complete_pairs
         and all(result.get("error") is None for result in results)
         and all(result["provider"].get("return_code") == 0 for result in results)
@@ -817,6 +958,53 @@ def render_report(document: dict[str, Any]) -> str:
         )
     input_ci = input_summary["fixture_cluster_bootstrap_95_ci"]
     uncached_ci = uncached_summary["fixture_cluster_bootstrap_95_ci"]
+    quality_preserved = bool(
+        semantic["task_success_rate"] >= baseline["task_success_rate"]
+        and semantic["acceptance_pass_rate"] >= baseline["acceptance_pass_rate"]
+        and semantic["test_pass_rate"] >= baseline["test_pass_rate"]
+    )
+    input_saving = bool(
+        credible
+        and quality_preserved
+        and input_ci
+        and input_ci[0] > 0
+        and semantic["total_input_tokens"] < baseline["total_input_tokens"]
+    )
+    uncached_saving = bool(
+        credible
+        and quality_preserved
+        and uncached_ci
+        and uncached_ci[0] > 0
+        and semantic["total_uncached_input_tokens"]
+        < baseline["total_uncached_input_tokens"]
+    )
+    if credible and not quality_preserved:
+        interpretation = (
+            "The semantic variant did not preserve measured implementation quality. "
+            "Token and latency deltas are not product benefits when acceptance behavior regresses."
+        )
+    elif not credible:
+        interpretation = (
+            "This is a directional smoke run. It can expose regressions and motivate a full "
+            "run, but it does not support a general token or latency claim."
+        )
+    elif input_saving and uncached_saving:
+        interpretation = (
+            "This corpus shows a statistically supported reduction in both total and uncached "
+            "input tokens while preserving measured implementation quality."
+        )
+    elif input_saving:
+        interpretation = (
+            "This corpus shows a statistically supported reduction in total input tokens, but "
+            "not in uncached input tokens. Cached and uncached usage must not be presented as "
+            "the same cost result."
+        )
+    else:
+        interpretation = (
+            "This run preserves the measured behavior but does not demonstrate a reliable "
+            "end-to-end input-token saving when corpus totals and confidence intervals are "
+            "considered."
+        )
     lines.extend([
         "",
         "## Paired variability",
@@ -853,13 +1041,11 @@ def render_report(document: dict[str, Any]) -> str:
         "",
         "Static size reduction proves only that the document is shorter. Acceptance results "
         "test whether implementation-relevant behavior survived compression. Provider token "
-        "usage includes the full agent loop, not only the specification text. This run preserves "
-        "all tested behavior but does not demonstrate an end-to-end token saving when corpus "
-        "totals and the confidence interval are considered.",
+        "usage includes the full agent loop, not only the specification text. " + interpretation,
         "",
         "## Limitations",
         "",
-        "- Eight small, synthetic Python fixtures are not representative of every codebase.",
+        "- Small, synthetic Python fixtures are not representative of every codebase.",
         f"- Results cover one model (`{document.get('model') or 'provider default'}`) and "
         f"one reasoning effort (`{document.get('reasoning_effort') or 'provider default'}`).",
         "- The benchmark excludes the one-time cost of creating or reviewing a semantic spec.",
@@ -892,6 +1078,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     static_parser = subparsers.add_parser("static", help="measure document sizes")
     static_parser.add_argument("--case", action="append", default=[])
+    static_parser.add_argument("--semantic-dir", type=Path)
+    static_parser.add_argument(
+        "--token-encoding",
+        help="optional tiktoken encoding, for example o200k_base",
+    )
     static_parser.add_argument("--json", action="store_true")
     static_parser.add_argument("--check", action="store_true", help="fail unless every semantic spec is smaller")
 
@@ -903,6 +1094,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["minimal", "low", "medium", "high", "xhigh"],
     )
     run_parser.add_argument("--case", action="append", default=[])
+    run_parser.add_argument(
+        "--semantic-dir",
+        type=Path,
+        help="use <case>.spec.ctx files from this directory instead of curated fixtures",
+    )
     run_parser.add_argument("--repetitions", type=int, default=1)
     run_parser.add_argument("--seed", type=int, default=20260901)
     run_parser.add_argument("--timeout-seconds", type=int, default=600)
@@ -932,10 +1128,22 @@ def main() -> int:
             print(f"validated {len(cases)} benchmark cases")
             return 0
         if args.command == "static":
-            rows = static_rows(discover_cases(args.case))
+            cases = discover_cases(args.case)
+            semantic_specs = load_semantic_specs(cases, args.semantic_dir)
+            rows = static_rows(
+                cases,
+                semantic_specs,
+                load_token_encoder(args.token_encoding),
+            )
             print(json.dumps(rows, indent=2) if args.json else render_static_markdown(rows), end="")
             if args.check and any(
-                row["semantic"]["bytes"] >= row["baseline"]["bytes"] for row in rows
+                row["semantic"]["bytes"] >= row["baseline"]["bytes"]
+                or row["semantic"]["words"] >= row["baseline"]["words"]
+                or (
+                    args.token_encoding
+                    and row["semantic"]["tokens"] >= row["baseline"]["tokens"]
+                )
+                for row in rows
             ):
                 return 1
             return 0

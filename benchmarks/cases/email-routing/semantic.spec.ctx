@@ -1,31 +1,23 @@
 spec
-meta:
-  id: email-routing
-  title: deterministic customer email routing
+goal: route customer email deterministically without mutating the message
 
-terms:
-  M: message object {sender, recipients, subject, body}
-  D: {queue, priority, normalized_sender, normalized_recipients}
-  K: billing|support|sales
-  precedence: billing > support > sales
-
-api:
-  route_email(M) -> D
+scope:
+  edit: solution.py
+  contract: route_email(message) -> {queue,priority,normalized_sender,normalized_recipients}
 
 rules:
-  R1: norm(M.sender)=strip+lower; norm(each M.recipients)=strip+lower; keep recipient order/duplicates
-  R2: T=ASCII tokens [a-z0-9]+ from lower(M.subject + " " + M.body)
-  R3: sender domain after last @ in {spam.test,malware.test} -> queue=spam
-  R4: non-spam recipient local-part exact billing|support|sales -> queue=K by precedence
-  R5: if R4 absent, T∩{invoice,payment,refund,charge} -> billing; else T∩{help,issue,error,bug} -> support; else T∩{quote,demo,pricing} -> sales; else general
-  R6: recipient queue overrides content queue; spam overrides all
-  R7: queue=spam -> priority=low; else T∩{urgent,asap,outage} -> high; else normal
-  R8: output D with R1 values and queue/priority; input M unchanged
+  R1: normalized sender/recipients = strip then lowercase; preserve recipient order and duplicates
+  R2: content tokens = ASCII `[a-z0-9]+` matches from lowercase subject and body
+  R3: sender domain after last `@` exactly spam.test or malware.test -> queue=spam, overriding all other routing
+  R4: otherwise exact recipient local part billing/support/sales selects queue; precedence billing > support > sales
+  R5: without R4, content token in invoice/payment/refund/charge -> billing
+  R6: otherwise help/issue/error/bug -> support; otherwise quote/demo/pricing -> sales; otherwise general
+  R7: recipient routing overrides content routing
+  R8: spam -> priority=low; otherwise urgent/asap/outage content token -> high; otherwise normal
+  R9: empty subject/body/recipients are valid; output has exactly four contract fields; preserve message and recipient list
 
 acceptance:
-  A1: normalize sender/recipients without changing order or duplicates
-  A2: apply spam, recipient, content, category-precedence, and urgency rules exactly
-  A3: empty subject/body/recipients remain valid and default to general/normal when unmatched
-  A4: return only JSON-serializable D and preserve M
-
-open_questions: []
+  A1: R1,R9 preserve normalized recipient order, duplicates, and inputs
+  A2: R2-R8 implement exact routing and precedence
+  A3: empty content defaults to general/normal when unmatched
+  A4: output is JSON-serializable and contains only contract fields

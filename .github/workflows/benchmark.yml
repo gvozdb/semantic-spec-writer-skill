@@ -22,6 +22,14 @@ jobs:
       - name: Validate benchmark fixtures
         run: python3 benchmarks/benchmark.py validate
 
+      - name: Compile benchmark tools
+        run: >-
+          python3 -m py_compile
+          benchmarks/benchmark.py
+          benchmarks/context.py
+          benchmarks/lifecycle.py
+          skills/semantic-spec-writer/scripts/check_conversion.py
+
       - name: Check semantic documents are smaller
         run: python3 benchmarks/benchmark.py static --check
 

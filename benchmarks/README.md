@@ -3,11 +3,15 @@
 This benchmark compares a conventional Markdown specification with an equivalent
 Semantic Spec Writer `.spec.ctx` document.
 
-It measures two different things:
+It measures four different things:
 
-1. **Static compression**: document bytes, words, characters, and lines.
-2. **Implementation performance**: acceptance pass rate, provider-reported token
+1. **Static compression**: document bytes, words, and optional tokenizer counts.
+2. **Context loading**: provider-reported input tokens for paired fixed-output,
+   zero-tool reads.
+3. **Implementation performance**: acceptance pass rate, provider-reported token
    usage, duration, tool calls, and optional estimated API cost.
+4. **Lifecycle cost**: semantic-spec authoring tokens plus repeated implementation
+   tokens and measured break-even reuse.
 
 Static compression alone is not evidence that a specification is useful. The
 implementation track checks whether an agent can still produce behavior that
@@ -29,6 +33,10 @@ passes deterministic tests.
   acceptance results, and failures.
 - A publishable run requires every pair and at least three repetitions. The
   report labels smaller or mock runs as smoke tests.
+- Generated-spec runs keep every failed attempt and include all retry usage in
+  authoring cost. `--max-attempts` is bounded; no result is silently discarded.
+- Token savings are reported as product benefits only when measured
+  implementation quality is preserved.
 
 The benchmark does not claim that one small fixture set represents every
 codebase, model, or specification style. It measures reuse of an already
@@ -41,7 +49,13 @@ cost.
 - Git
 - Codex CLI and working authentication for real agent runs
 
-No Python packages are required.
+No Python packages are required for fixture validation or implementation runs.
+Tokenizer-aware conversion and static checks additionally require:
+
+```bash
+python3 -m venv /tmp/semantic-spec-tokenizer
+/tmp/semantic-spec-tokenizer/bin/pip install -r benchmarks/requirements-tokenizer.txt
+```
 
 ## Validate fixtures
 
@@ -53,6 +67,15 @@ python3 -m unittest discover -s benchmarks/tests -v
 
 Validation proves that every reference implementation passes, every starter
 implementation fails, and each semantic document is structurally valid.
+
+Run a tokenizer-aware check against generated specs:
+
+```bash
+/tmp/semantic-spec-tokenizer/bin/python benchmarks/benchmark.py static \
+  --semantic-dir benchmarks/results/generated/specs \
+  --token-encoding o200k_base \
+  --check
+```
 
 ## Run a free local smoke test
 
@@ -101,6 +124,62 @@ Use `--keep-workspaces` only when failed implementations need inspection.
 Without it, generated workspaces are removed after the run.
 
 Result and report paths are not overwritten unless `--force` is passed.
+
+## Generate and benchmark the real skill output
+
+The curated `.spec.ctx` fixtures test the format. This track tests what the
+skill actually generates from the Markdown fixtures and records every attempt:
+
+```bash
+/tmp/semantic-spec-tokenizer/bin/python benchmarks/lifecycle.py generate \
+  --provider codex \
+  --model YOUR_MODEL \
+  --reasoning-effort medium \
+  --token-encoding o200k_base \
+  --max-attempts 2 \
+  --output benchmarks/results/generated
+```
+
+Measure isolated context loading:
+
+```bash
+python3 benchmarks/context.py run \
+  --provider codex \
+  --model YOUR_MODEL \
+  --reasoning-effort medium \
+  --semantic-dir benchmarks/results/generated/specs \
+  --repetitions 3 \
+  --output benchmarks/results/generated/context-r3.json
+```
+
+Measure implementation quality and the complete agent loop:
+
+```bash
+python3 benchmarks/benchmark.py run \
+  --provider codex \
+  --model YOUR_MODEL \
+  --reasoning-effort medium \
+  --semantic-dir benchmarks/results/generated/specs \
+  --repetitions 3 \
+  --output benchmarks/results/generated/implementation-r3.json
+```
+
+Render all reports:
+
+```bash
+python3 benchmarks/context.py report \
+  benchmarks/results/generated/context-r3.json \
+  --output CONTEXT_BENCHMARK.md
+
+python3 benchmarks/benchmark.py report \
+  benchmarks/results/generated/implementation-r3.json \
+  --output BENCHMARK.md
+
+python3 benchmarks/lifecycle.py report \
+  benchmarks/results/generated/generation.json \
+  benchmarks/results/generated/implementation-r3.json \
+  --output LIFECYCLE_BENCHMARK.md
+```
 
 ## Optional cost estimate
 

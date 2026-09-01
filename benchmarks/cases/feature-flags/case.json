@@ -1,5 +1,9 @@
 {
   "id": "feature-flags",
   "title": "Targeted feature flag evaluation",
-  "entrypoint": "solution.py"
+  "entrypoint": "solution.py",
+  "semantic_required_patterns": [
+    "user\\[(?:\\\"|')id(?:\\\"|')\\]|user id",
+    "flag\\[(?:\\\"|')key(?:\\\"|')\\]|flag key"
+  ]
 }
