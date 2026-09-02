@@ -59,9 +59,10 @@ CAPSULE_PROTOCOL = {
     "pre_edit_discovery": "forbidden",
     "pre_edit_read_budget": 0,
     "pre_edit_verification": "forbidden",
-    "recovery": "exact_frame_mismatch_or_failed_V1",
+    "recovery": "normal_mode_after_exact_frame_mismatch_or_failed_V1",
     "source_authority": "sealed_current_source_frames",
     "verification": "exact_V1_alone_once_after_all_routed_edits",
+    "work_units": "route_actions_adjacent_to_source",
 }
 LEGACY_CAPSULE_PROTOCOL = {
     "first_action": "file_change_or_one_routed_read",
@@ -75,16 +76,19 @@ CAPSULE_CONTROL = (
     "IMPLEMENTATION REQUIRED. The packet frame is the task. Source frames are current "
     "pre-edit repository bytes, not patches or desired output. FIRST use one atomic "
     "file-change operation containing every edit/create route; do not split the edit. "
-    "Before that complete change, do not read files or run commands. THEN run the exact "
-    "V1 command alone, exactly once; stop only when that post-edit V1 passes. Any other "
-    "tool call or a passing early V1 is failure, not completion."
+    "Each source frame's do list is mandatory; internally check every item before that "
+    "single change without using a tool. Before the complete change, do not read files "
+    "or run commands. THEN run the exact V1 command alone, exactly once. A pass ends "
+    "the task. A failed V1 or exact-frame mismatch exits this fast path into normal "
+    "recovery; any other tool call or a passing early V1 fails the fast path."
 )
 CAPSULE_EXECUTION = (
     "IMPLEMENTATION REQUIRED: packet=task; source frames=current pre-edit bytes, not "
-    "desired output -> one atomic file-change operation contains every edit/create do; "
-    "do not split -> no read/command before that complete change -> exact V1 alone "
-    "exactly once -> stop only on pass; any other tool call or early V1=failure; expand "
-    "only after exact-frame mismatch or failed V1"
+    "desired output; each source frame do list=mandatory local work unit -> internally "
+    "check every do, then one atomic file-change operation contains all routed work; do "
+    "not split -> no read/command before complete change -> exact V1 alone exactly once "
+    "-> pass=stop; failed V1/frame mismatch=normal recovery outside fast path; any other "
+    "tool call or early V1=fast-path failure"
 )
 LEGACY_CAPSULE_EXECUTION = (
     "sealed frames are exact patch operands -> edit immediately or use at most one "
@@ -353,6 +357,37 @@ def _require_capsule_v1_verification(text: str) -> None:
         )
 
 
+def _route_action_groups(text: str, targets: list[Any]) -> tuple[tuple[str, ...], ...]:
+    """Return validated Packet actions in the same order as parsed routes."""
+
+    groups: list[list[str]] = []
+    current: list[str] | None = None
+    in_route = False
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            in_route = line.strip() == "route:"
+            current = None
+            continue
+        if not in_route:
+            continue
+        route_match = packet_checker.ROUTE_LINE.fullmatch(line)
+        if route_match is not None:
+            current = []
+            groups.append(current)
+            continue
+        action_match = packet_checker.ACTION_LINE.fullmatch(line)
+        if action_match is not None:
+            if current is None:
+                raise CapsuleError("packet has an orphan routed action")
+            current.append(action_match.group(1).strip())
+            continue
+        if packet_checker.EXPAND_LINE.fullmatch(line) is not None:
+            current = None
+    if len(groups) != len(targets):
+        raise CapsuleError("packet route/action grouping changed during Capsule build")
+    return tuple(tuple(group) for group in groups)
+
+
 def _open_repo(repo: Path | str) -> Any:
     try:
         return packet_checker.secure_open_directory(repo, "repository")
@@ -453,6 +488,8 @@ def _source_descriptor(
     target: Any,
     payload: bytes,
     version: int = CAPSULE_VERSION,
+    *,
+    actions: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     descriptor = {
         "anchor": target.anchor,
@@ -464,6 +501,7 @@ def _source_descriptor(
         "route_index": index,
     }
     if version == CAPSULE_VERSION:
+        descriptor["do"] = list(actions)
         descriptor["role"] = "current_pre_edit_source"
     return descriptor
 
@@ -482,6 +520,7 @@ def _validate_source_descriptor(
         "route_index",
     }
     if version == CAPSULE_VERSION:
+        expected_keys.add("do")
         expected_keys.add("role")
     _require_keys(
         descriptor,
@@ -492,6 +531,12 @@ def _validate_source_descriptor(
         raise CapsuleError("source frame has invalid kind")
     if version == CAPSULE_VERSION and descriptor["role"] != "current_pre_edit_source":
         raise CapsuleError("source frame has invalid role")
+    if version == CAPSULE_VERSION and (
+        not isinstance(descriptor["do"], list)
+        or any(not isinstance(action, str) or not action for action in descriptor["do"])
+        or (descriptor["kind"] == "edit" and not descriptor["do"])
+    ):
+        raise CapsuleError("source frame has invalid do actions")
     if not isinstance(descriptor["path"], str) or not descriptor["path"]:
         raise CapsuleError("source frame has invalid path")
     if descriptor["anchor"] is not None and not isinstance(
@@ -835,6 +880,7 @@ def _build_capsule(
             raise CapsuleError(f"cannot validate Packet v3: {exc}") from exc
         if v3_errors:
             raise CapsuleError("invalid Packet v3: " + "; ".join(v3_errors))
+        route_actions = _route_action_groups(v3_text, targets)
         route_hash = v3_result.get("route_sha256")
         if not _is_sha256(route_hash) or route_hash != snapshot.route_sha256():
             raise CapsuleError("Packet v3 did not produce the pinned route SHA-256")
@@ -850,7 +896,15 @@ def _build_capsule(
                     f"routed file does not exist: {target.relative_path}"
                 )
             payload = _selected_source(target, entry.file.data)
-            sources.append((_source_descriptor(index, target, payload), payload))
+            sources.append((
+                _source_descriptor(
+                    index,
+                    target,
+                    payload,
+                    actions=route_actions[index],
+                ),
+                payload,
+            ))
 
         if len(sources) > MAX_SOURCE_COUNT:
             raise CapsuleError("Capsule has too many source frames")
@@ -1094,6 +1148,7 @@ def _check_capsule(
             raise CapsuleError(
                 "reconstructed Packet v3 is invalid: " + "; ".join(v3_errors)
             )
+        route_actions = _route_action_groups(v3_text, targets)
         route_hash = v3_result.get("route_sha256")
         declared_route_hash = v3_result.get("declared_route_sha256")
         if (
@@ -1116,7 +1171,16 @@ def _check_capsule(
                 )
             payload = _selected_source(target, entry.file.data)
             expected_sources.append(
-                (_source_descriptor(index, target, payload, version), payload)
+                (
+                    _source_descriptor(
+                        index,
+                        target,
+                        payload,
+                        version,
+                        actions=route_actions[index],
+                    ),
+                    payload,
+                )
             )
         if len(sources) != len(expected_sources):
             raise CapsuleError("capsule source frame count does not match packet routes")

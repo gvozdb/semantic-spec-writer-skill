@@ -109,6 +109,8 @@ Its sealed control identifies source frames as current pre-edit data, rejects a
 no-edit outcome, and requires every routed edit in one atomic file-change
 operation before any repository read or command. The exact declared verification
 then runs alone exactly once; any additional tool call fails the action gate. The
+mandatory `do` list is repeated beside each source frame so the model does not
+have to cross-reference a global route while constructing the one-shot patch. The
 two-arm harness compares Capsule v5 directly with Packet v3, securely compares
 every routed post-state with the captured starter, and fails no-edit, partial
 edit, split-edit, pre-edit command, substituted verification, or multi-attempt

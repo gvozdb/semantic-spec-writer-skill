@@ -24,12 +24,12 @@ CAPSULE_SCRIPT = (
 )
 FIXTURE = ROOT / "benchmarks" / "handoff-cases" / "tenant-settings"
 EXPECTED_CAPSULE_SHA256 = (
-    "e8add8cf8a8d49b02354da9690b8b0a2ce154d57dff3a1661b16fcac199cef7b"
+    "60b79e7b646c7f09f18368562412e44b1ca37ff5589ad00839f4e8474407ad29"
 )
 FIXTURE_CAPSULE_SHA256 = {
-    "refund-ledger": "97a6efbfa2f23fed9035026d09e439732b9d9ae9f95e9c1c03c63757b751f816",
-    "tenant-settings": "e8add8cf8a8d49b02354da9690b8b0a2ce154d57dff3a1661b16fcac199cef7b",
-    "webhook-dispatch": "ff0dbc4a8ff475270b2ac1165a95e3f8c44cad328341f79e8c60fbee57b132b7",
+    "refund-ledger": "363fb82ffa683368e49bdc5970ea0c0c5a8e5ea68ab0a97c4548cff8c17d6885",
+    "tenant-settings": "60b79e7b646c7f09f18368562412e44b1ca37ff5589ad00839f4e8474407ad29",
+    "webhook-dispatch": "e4dde650d64ddfd883f482f56edf00611d1c4a076441c71db8411b0094c9dd58",
 }
 
 
@@ -107,6 +107,7 @@ class CapsuleSecurityTest(unittest.TestCase):
         )
         for descriptor, payload in sources:
             legacy_descriptor = dict(descriptor)
+            legacy_descriptor.pop("do")
             legacy_descriptor.pop("role")
             body.extend(self.capsule._frame(legacy_descriptor, payload))
         body.extend(self.capsule._seal_line(self.capsule._sha256(body)))

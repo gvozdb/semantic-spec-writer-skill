@@ -912,6 +912,12 @@ class BenchmarkCliTest(unittest.TestCase):
             )
             self.assertIn(b'"role":"current_pre_edit_source"', first)
             self.assertIn(
+                b'"do":["first layer containing name from request>tenant>global else '
+                b'default; null stops fallback; return exactly '
+                b'{source,raw:deep_copy(value)}"]',
+                first,
+            )
+            self.assertIn(
                 b"execution: " + capsule_module.CAPSULE_EXECUTION.encode("ascii"),
                 first,
             )
@@ -933,7 +939,7 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertIn(capsule_module.CAPSULE_CONTROL, prompt)
         self.assertIn(
-            "a passing early V1 is failure, not completion",
+            "a passing early V1 fails the fast path",
             prompt,
         )
         self.assertLess(

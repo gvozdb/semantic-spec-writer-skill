@@ -224,6 +224,7 @@ def _check_capsule_snapshot(
     # checker above also proved they are absent in this exact materialization.
     normalized_packet = packet_text.replace("\r\n", "\n").replace("\r", "\n")
     targets = capsule_module.packet_checker.parse_routes(normalized_packet)
+    route_actions = capsule_module._route_action_groups(normalized_packet, targets)
     expected_sources: list[tuple[dict[str, Any], bytes]] = []
     for index, target in enumerate(targets):
         if target.kind == "create":
@@ -234,7 +235,15 @@ def _check_capsule_snapshot(
         ).data
         payload = capsule_module._selected_source(target, captured)
         expected_sources.append(
-            (capsule_module._source_descriptor(index, target, payload), payload)
+            (
+                capsule_module._source_descriptor(
+                    index,
+                    target,
+                    payload,
+                    actions=route_actions[index],
+                ),
+                payload,
+            )
         )
     if sources != expected_sources:
         raise RuntimeError(
