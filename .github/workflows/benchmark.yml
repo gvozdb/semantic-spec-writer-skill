@@ -13,11 +13,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate published Capsule artifacts when present
+        shell: bash
+        run: |
+          set -o pipefail
+          env -i PATH="$PATH" LC_ALL=C GIT_NO_REPLACE_OBJECTS=1 GIT_OPTIONAL_LOCKS=0 \
+            git --no-pager cat-file blob HEAD:benchmarks/validate_capsule_release.py | \
+            python3 -I /dev/stdin
 
       - name: Validate benchmark fixtures
         run: |
@@ -34,13 +44,16 @@ jobs:
           benchmarks/lifecycle.py
           benchmarks/solution_runtime.py
           benchmarks/solution_worker.py
+          benchmarks/validate_capsule_release.py
           skills/semantic-spec-writer/scripts/check_conversion.py
           skills/semantic-spec-writer/scripts/check_execution_packet.py
+          skills/semantic-spec-writer/scripts/context_capsule.py
 
       - name: Check semantic documents are smaller
         run: |
           python3 benchmarks/benchmark.py static --check
           python3 benchmarks/handoff.py static
+          python3 benchmarks/handoff.py static --comparison capsule-v4
 
       - name: Run benchmark harness tests
-        run: python3 -m unittest discover -s benchmarks/tests -v
+        run: python3 -W error::ResourceWarning -m unittest discover -s benchmarks/tests -v

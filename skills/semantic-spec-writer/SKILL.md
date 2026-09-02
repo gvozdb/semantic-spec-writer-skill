@@ -1,6 +1,6 @@
 ---
 name: semantic-spec-writer
-description: Write or rewrite plans, technical specs, architecture notes, implementation plans, acceptance criteria, and repository-grounded coding handoffs as compact execution documents for LLM agents. Use when a user asks to create, compress, formalize, structure, convert, or hand off planning and technical work.
+description: Write or rewrite plans, technical specs, architecture notes, implementation plans, acceptance criteria, repository-grounded coding handoffs, and sealed source capsules as compact execution context for LLM agents. Use when a user asks to create, compress, formalize, structure, convert, compile, or hand off planning and technical work.
 ---
 
 # Semantic Spec Writer
@@ -13,6 +13,7 @@ Produce `.plan.ctx` and `.spec.ctx` files that an implementation agent can use w
 - Existing document: convert it only as requested, preserving source meaning and identifiers. The final artifact must be shorter than the source.
 - Handoff or repeated use: optimize for independent execution by another agent or later turn.
 - Repository execution packet: when the user wants a coding handoff and the codebase is available, read [references/execution-packets.md](references/execution-packets.md). Ground a minimal read/edit route before writing the packet.
+- Context capsule: when a validated Packet v3 will be executed in another turn or agent, read [references/context-capsules.md](references/context-capsules.md). Compile the packet plus its exact routed source only when removing downstream model/tool turns justifies the larger initial artifact.
 
 Do not claim that conversion saves total tokens for a one-off implementation. It adds an authoring step; its economy comes from a smaller reusable context and less implementation ambiguity.
 
@@ -36,6 +37,7 @@ A smaller file is useful only when it remains faster to execute correctly. When 
 - Prefer exact paths and one runnable verification command over generic implementation advice.
 - For an execution packet, spend authoring effort only on facts that remove downstream discovery or prevent a wrong edit. Do not turn the packet into a repository dump.
 - Give execution packets the canonical bounded downstream loop from the reference: one routed read, one implementation pass, one declared verification, then stop on success. Expansion requires a concrete contradiction or failure.
+- For a Capsule v4 handoff, validate the trusted Packet v3 first, build once, and check it against both the current repository and original packet before execution. Do not rebuild or reread the capsule in a loop.
 
 ## Format
 

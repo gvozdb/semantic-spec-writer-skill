@@ -92,11 +92,38 @@ def execute_test(
         }
 
 
-def grade(case_dir: Path, workspace: Path, *, untrusted: bool = False) -> dict[str, Any]:
+def grade(
+    case_dir: Path,
+    workspace: Path,
+    *,
+    untrusted: bool = False,
+    expected_case_sha256: str | None = None,
+    expected_tests_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Grade one workspace using stable, optionally hash-pinned oracle bytes."""
+
     case_dir = case_dir.resolve()
     workspace = workspace.resolve()
-    manifest = json.loads((case_dir / "case.json").read_text(encoding="utf-8"))
-    suite = json.loads((case_dir / "tests.json").read_text(encoding="utf-8"))
+    case_bytes = core.read_stable_regular_file(
+        case_dir / "case.json",
+        "private grader case manifest",
+    )
+    tests_bytes = core.read_stable_regular_file(
+        case_dir / "tests.json",
+        "private grader tests",
+    )
+    if (
+        expected_case_sha256 is not None
+        and core.sha256_bytes(case_bytes) != expected_case_sha256
+    ):
+        raise RuntimeError("private grader case manifest does not match its snapshot")
+    if (
+        expected_tests_sha256 is not None
+        and core.sha256_bytes(tests_bytes) != expected_tests_sha256
+    ):
+        raise RuntimeError("private grader tests do not match their snapshot")
+    manifest = json.loads(case_bytes.decode("utf-8"))
+    suite = json.loads(tests_bytes.decode("utf-8"))
     modules: dict[str, Any] = {}
     failures: list[dict[str, str]] = []
     acceptance_tests: dict[str, list[bool]] = {}
@@ -211,6 +238,8 @@ def main() -> int:
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("workspace", type=Path)
     parser.add_argument("--untrusted", action="store_true")
+    parser.add_argument("--case-sha256")
+    parser.add_argument("--tests-sha256")
     args = parser.parse_args()
 
     try:
@@ -218,6 +247,8 @@ def main() -> int:
             args.case_dir.resolve(),
             args.workspace.resolve(),
             untrusted=args.untrusted,
+            expected_case_sha256=args.case_sha256,
+            expected_tests_sha256=args.tests_sha256,
         )
     except Exception as exc:  # noqa: BLE001 - produce machine-readable infra errors
         print(json.dumps({"infrastructure_error": f"{type(exc).__name__}: {exc}"}))

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -11,6 +13,7 @@ import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +21,7 @@ CLI = ROOT / "benchmarks" / "benchmark.py"
 LIFECYCLE = ROOT / "benchmarks" / "lifecycle.py"
 CONTEXT = ROOT / "benchmarks" / "context.py"
 HANDOFF = ROOT / "benchmarks" / "handoff.py"
+WORKFLOW = ROOT / ".github" / "workflows" / "benchmark.yml"
 sys.path.insert(0, str(ROOT / "benchmarks"))
 import benchmark as benchmark_module
 CONVERSION_CHECK = (
@@ -33,6 +37,13 @@ PACKET_CHECK = (
     / "semantic-spec-writer"
     / "scripts"
     / "check_execution_packet.py"
+)
+CONTEXT_CAPSULE = (
+    ROOT
+    / "skills"
+    / "semantic-spec-writer"
+    / "scripts"
+    / "context_capsule.py"
 )
 HANDOFF_CASES = ROOT / "benchmarks" / "handoff-cases"
 
@@ -73,6 +84,25 @@ class BenchmarkCliTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("validated 3 execution-packet cases", result.stdout)
+
+    def test_capsule_ci_gate_uses_isolated_launcher_before_python_work(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        release_blob = (
+            "git --no-pager cat-file blob "
+            "HEAD:benchmarks/validate_capsule_release.py"
+        )
+        release_command = "python3 -I /dev/stdin"
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertEqual(workflow.count(release_blob), 1)
+        self.assertEqual(workflow.count(release_command), 1)
+        self.assertLess(
+            workflow.index(release_blob),
+            workflow.index("python3 benchmarks/benchmark.py validate"),
+        )
+        self.assertIn(
+            "python3 -W error::ResourceWarning -m unittest discover",
+            workflow,
+        )
 
     def test_missing_or_empty_cases_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory(prefix="empty-cases-") as directory:
@@ -725,9 +755,55 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stderr)
             metrics = json.loads(result.stdout)
             self.assertIn("duplicate route path service.py", "\n".join(metrics["errors"]))
-            self.assertIn("source anchor not found", "\n".join(metrics["errors"]))
-            self.assertIn("repository-relative", "\n".join(metrics["errors"]))
             self.assertIn("file-owned do action", "\n".join(metrics["errors"]))
+
+            packet.write_text(
+                "spec\nroute:\n"
+                "  edit: ../outside.py\n"
+                "    do: update the function\n"
+                "execution: routed read once -> all do -> V1 once -> stop on pass; "
+                "expand only on contradiction/failure\n"
+                f"basis: route-sha256:{'0' * 64}\n"
+                "verify:\n"
+                "  V1: `python -m py_compile service.py`\n",
+                encoding="utf-8",
+            )
+            escaped = subprocess.run(
+                [sys.executable, str(PACKET_CHECK), str(repo), str(packet)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(escaped.returncode, 1, escaped.stderr)
+            escaped_metrics = json.loads(escaped.stdout)
+            self.assertIn(
+                "repository-relative",
+                "\n".join(escaped_metrics["errors"]),
+            )
+
+            packet.write_text(
+                "spec\nroute:\n"
+                "  edit: service.py::def stale\n"
+                "    do: update the function\n"
+                "execution: routed read once -> all do -> V1 once -> stop on pass; "
+                "expand only on contradiction/failure\n"
+                f"basis: route-sha256:{'0' * 64}\n"
+                "verify:\n"
+                "  V1: `python -m py_compile service.py`\n",
+                encoding="utf-8",
+            )
+            stale = subprocess.run(
+                [sys.executable, str(PACKET_CHECK), str(repo), str(packet)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(stale.returncode, 1, stale.stderr)
+            stale_metrics = json.loads(stale.stdout)
+            self.assertIn(
+                "source anchor not found",
+                "\n".join(stale_metrics["errors"]),
+            )
 
     def test_execution_packet_rejects_malformed_route_line(self) -> None:
         with tempfile.TemporaryDirectory(prefix="malformed-packet-") as directory:
@@ -785,6 +861,397 @@ class BenchmarkCliTest(unittest.TestCase):
                 "packet has duplicate basis declarations", metrics["errors"]
             )
 
+    def test_context_capsule_round_trip_is_deterministic(self) -> None:
+        capsule_module = load_module("context_capsule_round_trip", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-round-trip-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+
+            first = capsule_module.build_capsule(repo, packet)
+            second = capsule_module.build_capsule(repo, packet)
+            self.assertEqual(first, second)
+            self.assertIsInstance(first.decode("utf-8"), str)
+            checked = capsule_module.check_capsule(repo, first, packet=packet)
+            self.assertTrue(checked["valid"], checked)
+            self.assertEqual(checked["version"], 4)
+            self.assertEqual(checked["source_count"], 3)
+            self.assertIn(
+                b'"first_action":"file_change_or_one_routed_read"',
+                first,
+            )
+            self.assertIn(
+                b"execution: sealed frames are exact patch operands -> edit "
+                b"immediately or use at most one bundled routed read when needed; no "
+                b"discovery/status/baseline V1 -> edit all routed symbols in one pass "
+                b"-> V1 once -> stop on pass; expand only after exact-frame mismatch "
+                b"or failed V1",
+                first,
+            )
+            self.assertNotIn(
+                b"execution: routed read once -> all do -> V1 once -> stop on pass; "
+                b"expand only on contradiction/failure",
+                first,
+            )
+
+    def test_context_capsule_binds_trusted_packet(self) -> None:
+        capsule_module = load_module("context_capsule_packet_binding", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-binding-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            other_packet = root / "other.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            other_packet.write_text(
+                packet.read_text(encoding="utf-8").replace(
+                    "goal: strict typed setting precedence",
+                    "goal: altered setting precedence",
+                ),
+                encoding="utf-8",
+            )
+            capsule = capsule_module.build_capsule(repo, packet)
+
+            unbound = capsule_module.check_capsule(repo, capsule)
+            self.assertFalse(unbound["valid"])
+            self.assertIn("trusted packet is required", "\n".join(unbound["errors"]))
+            trusted = capsule_module.check_capsule(repo, capsule, packet=packet)
+            self.assertTrue(trusted["valid"], trusted)
+            self.assertTrue(trusted["packet_bound"])
+            rejected = capsule_module.check_capsule(
+                repo, capsule, packet=other_packet
+            )
+            self.assertFalse(rejected["valid"])
+            self.assertIn("trusted packet", "\n".join(rejected["errors"]))
+
+    def test_context_capsule_rejects_tampered_seal(self) -> None:
+        capsule_module = load_module("context_capsule_tamper", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-tamper-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+            tampered = capsule.replace(b"goal:", b"gool:", 1)
+            self.assertNotEqual(tampered, capsule)
+
+            checked = capsule_module.check_capsule(repo, tampered, packet=packet)
+            self.assertFalse(checked["valid"])
+            self.assertIn("seal", "\n".join(checked["errors"]).lower())
+
+    def test_context_capsule_rejects_trailing_and_non_utf8_bytes(self) -> None:
+        capsule_module = load_module("context_capsule_bytes", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-bytes-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+
+            trailing = capsule_module.check_capsule(
+                repo, capsule + b"x", packet=packet
+            )
+            self.assertFalse(trailing["valid"])
+            self.assertIn("trailing", "\n".join(trailing["errors"]))
+            non_utf8 = capsule_module.check_capsule(
+                repo, capsule + b"\xff", packet=packet
+            )
+            self.assertFalse(non_utf8["valid"])
+            self.assertIn("UTF-8", "\n".join(non_utf8["errors"]))
+
+    def test_context_capsule_preserves_ranged_bytes_and_omits_create_source(self) -> None:
+        capsule_module = load_module("context_capsule_ranges", CONTEXT_CAPSULE)
+        with tempfile.TemporaryDirectory(prefix="context-capsule-ranges-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            repo.mkdir()
+            source = repo / "source.py"
+            source.write_bytes(b"first = 1\r\nvalue = 2\r\nlast = 3")
+            packet = root / "packet.spec.ctx"
+            packet_text = (
+                "spec\n"
+                "route:\n"
+                "  edit: source.py:2-2::value = 2\n"
+                "    do: update the value\n"
+                "  create: generated.py\n"
+                "    do: add the generated module\n"
+                "execution: routed read once -> all do -> V1 once -> stop on pass; "
+                "expand only on contradiction/failure\n"
+                "basis: route-sha256:" + "0" * 64 + "\n"
+                "verify:\n"
+                "  V1: `python3 -m py_compile source.py`\n"
+            )
+            targets = capsule_module.packet_checker.parse_routes(packet_text)
+            route_hash = capsule_module.packet_checker.route_sha256(repo, targets)
+            packet.write_bytes(
+                packet_text.replace("0" * 64, route_hash)
+                .replace("\n", "\r\n")
+                .encode("utf-8")
+            )
+
+            capsule = capsule_module.build_capsule(repo, packet)
+            checked = capsule_module.check_capsule(repo, capsule, packet=packet)
+            self.assertTrue(checked["valid"], checked)
+            self.assertEqual(checked["source_count"], 1)
+            self.assertIn(b"value = 2\r\n", capsule)
+
+    def test_context_capsule_rejects_stale_repository(self) -> None:
+        capsule_module = load_module("context_capsule_stale", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-stale-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+            (repo / "settings" / "layers.py").write_text(
+                "# stale snapshot\n", encoding="utf-8"
+            )
+
+            checked = capsule_module.check_capsule(repo, capsule, packet=packet)
+            self.assertFalse(checked["valid"])
+            self.assertIn("stale", "\n".join(checked["errors"]).lower())
+
+    def test_context_capsule_rejects_malformed_frame_length(self) -> None:
+        capsule_module = load_module("context_capsule_length", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-length-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+            match = re.search(br'"byte_length":([0-9]+)', capsule)
+            self.assertIsNotNone(match)
+            replacement = b"9" * len(match.group(1))
+            self.assertNotEqual(replacement, match.group(1))
+            malformed = (
+                capsule[:match.start(1)]
+                + replacement
+                + capsule[match.end(1):]
+            )
+            seal_start = malformed.rfind(b"@SEAL ")
+            self.assertGreater(seal_start, 0)
+            resealed = (
+                malformed[:seal_start]
+                + b'@SEAL {"sha256":"'
+                + hashlib.sha256(malformed[:seal_start]).hexdigest().encode("ascii")
+                + b'"}\n'
+            )
+
+            checked = capsule_module.check_capsule(repo, resealed, packet=packet)
+            self.assertFalse(checked["valid"])
+            self.assertTrue(
+                any(
+                    marker in "\n".join(checked["errors"]).lower()
+                    for marker in ("byte_length", "frame")
+                ),
+                checked,
+            )
+
+    def test_context_capsule_rejects_symlinked_routed_file(self) -> None:
+        capsule_module = load_module("context_capsule_symlink", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-symlink-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+            routed = repo / "settings" / "layers.py"
+            replacement = repo / "settings" / "layers_real.py"
+            replacement.write_bytes(routed.read_bytes())
+            routed.unlink()
+            routed.symlink_to(replacement.name)
+
+            with self.assertRaisesRegex(capsule_module.CapsuleError, "symlink"):
+                capsule_module.build_capsule(repo, packet)
+            checked = capsule_module.check_capsule(repo, capsule, packet=packet)
+            self.assertFalse(checked["valid"])
+            self.assertIn("symlink", "\n".join(checked["errors"]))
+
+    def test_context_capsule_build_refuses_overwrite_without_force(self) -> None:
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-overwrite-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            output = root / "task.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            output.write_text("keep", encoding="utf-8")
+
+            refused = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "build",
+                    str(repo),
+                    str(packet),
+                    str(output),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(refused.returncode, 1, refused.stderr)
+            self.assertEqual(output.read_text(encoding="utf-8"), "keep")
+            metrics = json.loads(refused.stdout)
+            self.assertFalse(metrics["valid"])
+            self.assertIn("overwrite", "\n".join(metrics["errors"]))
+
+            forced = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "build",
+                    str(repo),
+                    str(packet),
+                    str(output),
+                    "--force",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(forced.returncode, 1, forced.stderr)
+            self.assertEqual(output.read_text(encoding="utf-8"), "keep")
+            self.assertIn(
+                "invalid magic",
+                "\n".join(json.loads(forced.stdout)["errors"]),
+            )
+
+            output.unlink()
+            created = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "build",
+                    str(repo),
+                    str(packet),
+                    str(output),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+
+            forced = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "build",
+                    str(repo),
+                    str(packet),
+                    str(output),
+                    "--force",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(forced.returncode, 0, forced.stderr)
+            self.assertTrue(output.read_bytes().startswith(b"CAPSULE-V4\n"))
+
+    def test_context_capsule_build_rejects_output_aliasing_input_file(self) -> None:
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-output-alias-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            for output in (packet, repo / "settings" / "layers.py"):
+                with self.subTest(output=output.name):
+                    before = output.read_bytes()
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(CONTEXT_CAPSULE),
+                            "build",
+                            str(repo),
+                            str(packet),
+                            str(output),
+                            "--force",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(output.read_bytes(), before)
+                    metrics = json.loads(result.stdout)
+                    self.assertIn("aliases input", "\n".join(metrics["errors"]))
+
+    def test_context_capsule_token_budget_covers_entire_capsule(self) -> None:
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-token-budget-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            capsule = root / "task.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            built = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "build",
+                    str(repo),
+                    str(packet),
+                    str(capsule),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            (root / "tiktoken.py").write_text(
+                "class Encoder:\n"
+                "    def encode(self, text):\n"
+                "        return [0] * (2 if text.startswith('CAPSULE-V4') else 1)\n"
+                "def get_encoding(name):\n"
+                "    return Encoder()\n",
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(root)
+            checked = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONTEXT_CAPSULE),
+                    "check",
+                    str(repo),
+                    str(capsule),
+                    "--packet",
+                    str(packet),
+                    "--encoding",
+                    "test_encoding",
+                    "--max-context-tokens",
+                    "1",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            self.assertEqual(checked.returncode, 1, checked.stderr)
+            metrics = json.loads(checked.stdout)
+            self.assertFalse(metrics["valid"])
+            self.assertIn("token budget", "\n".join(metrics["errors"]))
+
     def test_acceptance_ids_must_be_declared_in_acceptance_block(self) -> None:
         with tempfile.TemporaryDirectory(prefix="acceptance-block-") as directory:
             case_dir = Path(directory)
@@ -809,7 +1276,7 @@ class BenchmarkCliTest(unittest.TestCase):
             )
             self.assertIn("example: acceptance block lacks A1", errors)
 
-    def test_codex_event_parser_preserves_and_classifies_commands(self) -> None:
+    def test_codex_event_parser_redacts_and_classifies_commands(self) -> None:
         events = "\n".join([
             json.dumps({
                 "type": "item.completed",
@@ -822,18 +1289,182 @@ class BenchmarkCliTest(unittest.TestCase):
             json.dumps({
                 "type": "item.completed",
                 "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "app.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
                     "type": "command_execution",
                     "command": "python3 -m py_compile app.py",
                     "exit_code": 0,
                 },
             }),
         ])
-        parsed = benchmark_module.parse_codex_events(events)
-        self.assertEqual(parsed["tool_call_total"], 2)
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("app.py",),
+        )
+        self.assertEqual(parsed["tool_call_total"], 3)
         self.assertEqual(len(parsed["command_log"]), 2)
+        self.assertNotIn("command", parsed["command_log"][0])
+        self.assertIn("command_sha256", parsed["command_log"][0])
+        self.assertNotIn("final_message", parsed)
         self.assertEqual(parsed["command_categories"]["discovery"], 1)
         self.assertEqual(parsed["command_categories"]["read"], 1)
         self.assertEqual(parsed["command_categories"]["verify"], 1)
+        self.assertEqual(
+            parsed["pre_edit_command_categories"],
+            {"discovery": 1, "read": 1, "verify": 0},
+        )
+        self.assertEqual(parsed["pre_edit_command_executions"], 1)
+        self.assertEqual(
+            parsed["pre_edit_telemetry"]["status"], "routed_edit_observed"
+        )
+
+    def test_codex_event_parser_keeps_claim_telemetry_pre_edit_until_target(self) -> None:
+        """A README change cannot hide subsequent discovery before implementation."""
+
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "sed -n '1,80p' service.py",
+                    "exit_code": 0,
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "README.md"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "rg --files",
+                    "exit_code": 0,
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "service.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "python3 -m py_compile service.py",
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("service.py",),
+        )
+        self.assertEqual(
+            parsed["pre_edit_command_categories"],
+            {"discovery": 1, "read": 1, "verify": 0},
+        )
+        self.assertEqual(parsed["pre_edit_command_executions"], 2)
+        self.assertEqual(
+            [entry["pre_edit"] for entry in parsed["command_log"]],
+            [True, True, False],
+        )
+        self.assertEqual(
+            parsed["pre_edit_telemetry"],
+            {
+                "schema_version": 2,
+                "status": "routed_edit_observed",
+                "target_count": 1,
+                "file_change_events": 2,
+                "unclassified_file_change_events": 0,
+                "substantive_file_change_events": 1,
+            },
+        )
+
+    def test_codex_event_parser_fails_claim_gate_closed_without_paths(self) -> None:
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "sed -n '1,80p' service.py",
+                    "exit_code": 0,
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {"type": "file_change"},
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "python3 -m py_compile service.py",
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("service.py",),
+        )
+        self.assertEqual(parsed["pre_edit_command_executions"], 2)
+        self.assertEqual(parsed["pre_edit_command_categories"]["verify"], 1)
+        self.assertEqual(parsed["pre_edit_telemetry"]["status"], "unavailable")
+
+    def test_codex_event_parser_classifies_git_and_scripted_reads(self) -> None:
+        events = "\n".join(
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": command,
+                    "exit_code": 0,
+                },
+            })
+            for command in (
+                "git status --short",
+                "git show HEAD:app.py",
+                "python3 -c \"from pathlib import Path; print(Path('app.py').read_text())\"",
+            )
+        )
+        parsed = benchmark_module.parse_codex_events(events)
+        self.assertEqual(parsed["command_categories"]["discovery"], 2)
+        self.assertEqual(parsed["command_categories"]["read"], 2)
+
+    def test_atomic_text_write_does_not_clobber_concurrent_creator(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="atomic-report-") as directory:
+            output = Path(directory) / "report.md"
+            original_link = os.link
+
+            def create_competing_output(source, destination):
+                Path(destination).write_text("competitor\n", encoding="utf-8")
+                return original_link(source, destination)
+
+            with mock.patch.object(
+                benchmark_module.os,
+                "link",
+                side_effect=create_competing_output,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "refusing to overwrite"):
+                    benchmark_module.write_text_atomic(
+                        output,
+                        "ours\n",
+                        overwrite=False,
+                    )
+            self.assertEqual(output.read_text(encoding="utf-8"), "competitor\n")
 
     def test_mock_handoff_suite_runs_all_pairs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="handoff-suite-") as directory:
@@ -1192,6 +1823,7 @@ class BenchmarkCliTest(unittest.TestCase):
             "reasoning_effort": "medium",
             "cases": ["example"],
             "repetitions": 3,
+            "seed": 20260901,
             "full_corpus": True,
             "variants": ["markdown", "semantic", "packet"],
             "static": [{"case": "example", "variants": metrics}],
@@ -1239,6 +1871,11 @@ class BenchmarkCliTest(unittest.TestCase):
                                 "read": 0,
                                 "verify": 1,
                             },
+                            "pre_edit_command_categories": {
+                                "discovery": 0,
+                                "read": 0,
+                                "verify": 0,
+                            },
                             "usage": {
                                 "input_tokens": 100,
                                 "uncached_input_tokens": 100,
@@ -1268,6 +1905,7 @@ class BenchmarkCliTest(unittest.TestCase):
             "packet_version": 3,
             "cases": [case.id for case in cases],
             "repetitions": 3,
+            "seed": 20260901,
             "variants": ["markdown", "semantic", "packet"],
             "full_corpus": False,
             "fixture_snapshot": {
@@ -1275,6 +1913,20 @@ class BenchmarkCliTest(unittest.TestCase):
             },
             "static": handoff.static_rows(cases),
         }
+        by_key = {
+            (result["case"], result["repetition"], result["variant"]): result
+            for result in results
+        }
+        for run_order, key in enumerate(
+            handoff.paired_job_schedule(
+                document["cases"],
+                document["repetitions"],
+                document["variants"],
+                document["seed"],
+            ),
+            start=1,
+        ):
+            by_key[key]["run_order"] = run_order
         self.assertTrue(handoff.report_run_is_credible(document, results))
 
         failed_provider = json.loads(json.dumps(results))
@@ -1332,6 +1984,439 @@ class BenchmarkCliTest(unittest.TestCase):
             finally:
                 handoff.CASES_DIR = original_cases_dir
 
+    def _capsule_credible_handoff_document(self, handoff):
+        revision_check = mock.patch.object(
+            handoff.core,
+            "git_revision_attestation_is_valid",
+            return_value=True,
+        )
+        revision_check.start()
+        self.addCleanup(revision_check.stop)
+        cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        config = handoff.CAPSULE_V4
+        snapshots = {
+            case.id: handoff.case_snapshot(case, config) for case in cases
+        }
+        results: list[dict[str, object]] = []
+        run_order = 0
+        for case in cases:
+            snapshot = snapshots[case.id]
+            for repetition in range(1, 4):
+                for variant in config.variants:
+                    run_order += 1
+                    specification = handoff.artifact_text(case, variant, config)
+                    is_capsule = variant == "capsule"
+                    input_tokens = 90 if is_capsule else 100
+                    uncached_input_tokens = 50 if is_capsule else 100
+                    results.append({
+                        "case": case.id,
+                        "pair_id": f"{case.id}:r{repetition}",
+                        "variant": variant,
+                        "repetition": repetition,
+                        "run_order": run_order,
+                        "spec": benchmark_module.text_metrics(specification),
+                        "provenance": handoff.result_provenance(
+                            snapshot,
+                            variant,
+                            specification,
+                            config,
+                        ),
+                        "provider": {
+                            "return_code": 0,
+                            "event_errors": [],
+                            "duration_seconds": 5.0 if is_capsule else 10.0,
+                            "tool_call_total": 2,
+                            "tool_calls": {"command_execution": 1},
+                            "command_categories": {
+                                "discovery": 0,
+                                "read": 0,
+                                "verify": 1,
+                            },
+                            "pre_edit_command_categories": {
+                                "discovery": 0,
+                                "read": 0,
+                                "verify": 0,
+                            },
+                            "usage": {
+                                "input_tokens": input_tokens,
+                                "uncached_input_tokens": uncached_input_tokens,
+                                "output_tokens": 10 if is_capsule else 20,
+                            },
+                        },
+                        "verification": {
+                            "command": case.manifest["verification_command"],
+                            "fixture_sha256": snapshot[
+                                "verification_fixture_sha256"
+                            ],
+                            "return_code": 0,
+                        },
+                        "grade": {
+                            "passed": 1,
+                            "total": 1,
+                            "acceptance_passed": 1,
+                            "acceptance_total": 1,
+                            "task_success": True,
+                        },
+                        "error": None,
+                    })
+        document = {
+            "schema_version": 2,
+            "kind": "semantic-context-capsule-comparison",
+            "comparison": "capsule-v4",
+            "packet_version": 3,
+            "capsule_version": 4,
+            "run_id": "capsule-test",
+            "provider": "codex",
+            "model": "test-model",
+            "reasoning_effort": "medium",
+            "cases": [case.id for case in cases],
+            "repetitions": 3,
+            "seed": 20260901,
+            "telemetry_attestation": "none",
+            "full_corpus": True,
+            "environment": {"git_commit": "unit-test-revision"},
+            "code_revision": {"unit_test": True},
+            "variants": list(config.variants),
+            "fixture_snapshot": snapshots,
+            "static": handoff.capsule_static_rows_from_snapshots(cases, snapshots),
+            "results": results,
+        }
+        by_key = {
+            (result["case"], result["repetition"], result["variant"]): result
+            for result in results
+        }
+        for run_order, key in enumerate(
+            handoff.paired_job_schedule(
+                document["cases"],
+                document["repetitions"],
+                document["variants"],
+                document["seed"],
+            ),
+            start=1,
+        ):
+            by_key[key]["run_order"] = run_order
+        return cases, document, results
+
+    def test_handoff_legacy_v3_published_report_stays_compatible(self) -> None:
+        handoff = load_module("benchmark_handoff_legacy_report", HANDOFF)
+        published = (
+            ROOT
+            / "benchmarks"
+            / "results"
+            / "published"
+            / "gpt-5.6-terra-medium-20260902-execution-packet"
+        )
+        document = json.loads((published / "handoff-r3.json").read_text(encoding="utf-8"))
+        self.assertNotIn("comparison", document)
+        self.assertEqual(
+            handoff.report(document),
+            (published / "HANDOFF.md").read_text(encoding="utf-8"),
+        )
+
+    def test_handoff_legacy_capsule_report_stays_compatible(self) -> None:
+        handoff = load_module("benchmark_handoff_legacy_capsule_report", HANDOFF)
+        published = (
+            ROOT
+            / "benchmarks"
+            / "results"
+            / "published"
+            / "gpt-5.6-terra-medium-20260902-context-capsule"
+        )
+        if not published.is_dir():
+            self.skipTest("optional historical Capsule publication is not present")
+        document = json.loads((published / "capsule-r3.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            handoff.report(document),
+            (published / "CAPSULE.md").read_text(encoding="utf-8"),
+        )
+
+    def test_mock_capsule_handoff_suite_has_two_arms_and_no_fixture_write(self) -> None:
+        handoff = load_module("benchmark_handoff_mock_capsule", HANDOFF)
+        before = {
+            case.id: benchmark_module.tree_sha256(case.path)
+            for case in benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        }
+        with tempfile.TemporaryDirectory(prefix="handoff-capsule-suite-") as directory:
+            root = Path(directory)
+            result_path = root / "result.json"
+            run = subprocess.run(
+                [
+                    sys.executable,
+                    str(HANDOFF),
+                    "run",
+                    "--provider",
+                    "mock",
+                    "--comparison",
+                    "capsule-v4",
+                    "--output",
+                    str(result_path),
+                ],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            document = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(document["kind"], "semantic-context-capsule-comparison")
+            self.assertEqual(document["comparison"], "capsule-v4")
+            self.assertEqual(document["capsule_version"], 4)
+            self.assertEqual(document["variants"], ["packet", "capsule"])
+            self.assertEqual(len(document["results"]), 6)
+            serialized = json.dumps(document)
+            self.assertNotIn('"command":', serialized)
+            self.assertNotIn('"final_message":', serialized)
+            self.assertNotIn('"stderr_tail":', serialized)
+            self.assertNotIn('"stdout_tail":', serialized)
+            self.assertEqual(
+                {
+                    (result["case"], result["repetition"], result["variant"])
+                    for result in document["results"]
+                },
+                {
+                    (case, 1, variant)
+                    for case in document["cases"]
+                    for variant in ("packet", "capsule")
+                },
+            )
+            self.assertTrue(
+                all(
+                    set(row["variants"]) == {"packet", "capsule"}
+                    for row in document["static"]
+                )
+            )
+            report = handoff.report(document)
+            self.assertIn("Non-publishable experimental smoke run", report)
+            self.assertIn("fewer than three repetitions", report)
+
+            static = subprocess.run(
+                [
+                    sys.executable,
+                    str(HANDOFF),
+                    "static",
+                    "--comparison",
+                    "capsule-v4",
+                    "--json",
+                ],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(static.returncode, 0, static.stderr)
+            self.assertTrue(
+                all(
+                    set(row["variants"]) == {"packet", "capsule"}
+                    for row in json.loads(static.stdout)
+                )
+            )
+        after = {
+            case.id: benchmark_module.tree_sha256(case.path)
+            for case in benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        }
+        self.assertEqual(after, before)
+
+    def test_capsule_handoff_provenance_and_source_mutation_fail_closed(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_provenance", HANDOFF)
+        cases, document, results = self._capsule_credible_handoff_document(handoff)
+        self.assertTrue(handoff.report_run_is_credible(document, results))
+
+        forged = json.loads(json.dumps(document))
+        forged["results"][0]["provenance"]["capsule_sha256"] = "0" * 64
+        self.assertFalse(handoff.report_run_is_credible(forged, forged["results"]))
+        forged_prompt = json.loads(json.dumps(document))
+        forged_prompt["results"][0]["provenance"]["prompt_sha256"] = "0" * 64
+        self.assertFalse(
+            handoff.report_run_is_credible(forged_prompt, forged_prompt["results"])
+        )
+        forged_artifact = json.loads(json.dumps(document))
+        case_id = forged_artifact["cases"][0]
+        forged_artifact["fixture_snapshot"][case_id]["artifacts"]["capsule"] = (
+            benchmark_module.attest_text("forged capsule bytes\n")
+        )
+        self.assertFalse(
+            handoff.report_run_is_credible(
+                forged_artifact,
+                forged_artifact["results"],
+            )
+        )
+        forged_source_frame = json.loads(json.dumps(document))
+        source_hashes = forged_source_frame["fixture_snapshot"][case_id]["capsule"][
+            "source_hashes"
+        ]
+        source_hashes[next(iter(source_hashes))] = "0" * 64
+        self.assertFalse(
+            handoff.report_run_is_credible(
+                forged_source_frame,
+                forged_source_frame["results"],
+            )
+        )
+
+        original_cases_dir = handoff.CASES_DIR
+        with tempfile.TemporaryDirectory(prefix="handoff-capsule-source-") as directory:
+            copied_cases = Path(directory) / "handoff-cases"
+            shutil.copytree(HANDOFF_CASES, copied_cases)
+            handoff.CASES_DIR = copied_cases
+            try:
+                self.assertTrue(handoff.report_run_is_credible(document, results))
+                source = copied_cases / "tenant-settings" / "starter" / "settings" / "layers.py"
+                source.write_text(
+                    source.read_text(encoding="utf-8") + "\n# source changed\n",
+                    encoding="utf-8",
+                )
+                self.assertFalse(handoff.report_run_is_credible(document, results))
+            finally:
+                handoff.CASES_DIR = original_cases_dir
+
+    def test_capsule_handoff_credibility_requires_exact_two_arm_keys(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_keys", HANDOFF)
+        _, document, results = self._capsule_credible_handoff_document(handoff)
+        self.assertTrue(handoff.report_run_is_credible(document, results))
+        duplicate_replacing_missing = json.loads(json.dumps(results))
+        duplicate_replacing_missing[-1] = duplicate_replacing_missing[0]
+        self.assertFalse(
+            handoff.report_run_is_credible(document, duplicate_replacing_missing)
+        )
+
+        forged_schedule = json.loads(json.dumps(document))
+        forged_schedule["results"][0]["run_order"], forged_schedule["results"][1][
+            "run_order"
+        ] = (
+            forged_schedule["results"][1]["run_order"],
+            forged_schedule["results"][0]["run_order"],
+        )
+        self.assertFalse(
+            handoff.report_run_is_credible(
+                forged_schedule,
+                forged_schedule["results"],
+            )
+        )
+
+    def test_capsule_claim_gate_rejects_pre_edit_exploration_or_incomplete_pair(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_claim", HANDOFF)
+        _, document, results = self._capsule_credible_handoff_document(handoff)
+        self.assertTrue(handoff.report_run_is_credible(document, results))
+        report = handoff.report(document)
+        self.assertIn("cannot establish a product token-saving claim", report)
+        self.assertIn("not independently attested", report)
+
+        recovery_read = json.loads(json.dumps(document))
+        next(
+            result
+            for result in recovery_read["results"]
+            if result["variant"] == "capsule"
+        )["provider"]["command_categories"]["read"] = 1
+        self.assertNotIn("pre-edit command budget", handoff.report(recovery_read))
+
+        discovery = json.loads(json.dumps(document))
+        next(
+            result
+            for result in discovery["results"]
+            if result["variant"] == "capsule"
+        )["provider"]["pre_edit_command_categories"]["discovery"] = 1
+        discovery_report = handoff.report(discovery)
+        self.assertIn("cannot establish a product token-saving claim", discovery_report)
+        self.assertIn("classified pre-edit command budget", discovery_report)
+
+        over_budget = json.loads(json.dumps(document))
+        next(
+            result
+            for result in over_budget["results"]
+            if result["variant"] == "capsule"
+        )["provider"]["pre_edit_command_categories"]["read"] = 2
+        self.assertIn(
+            "cannot establish a product token-saving claim",
+            handoff.report(over_budget),
+        )
+
+        pre_edit_verification = json.loads(json.dumps(document))
+        next(
+            result
+            for result in pre_edit_verification["results"]
+            if result["variant"] == "capsule"
+        )["provider"]["pre_edit_command_categories"]["verify"] = 1
+        self.assertIn(
+            "classified pre-edit command budget",
+            handoff.report(pre_edit_verification),
+        )
+
+        no_saving = json.loads(json.dumps(document))
+        for result in no_saving["results"]:
+            if result["variant"] == "capsule":
+                result["provider"]["usage"] = {
+                    "input_tokens": 100,
+                    "uncached_input_tokens": 100,
+                    "output_tokens": 20,
+                }
+        self.assertIn(
+            "did not reduce total model tokens",
+            handoff.report(no_saving),
+        )
+
+        incomplete = json.loads(json.dumps(document))
+        failed = next(
+            result
+            for result in incomplete["results"]
+            if result["variant"] == "packet" and result["repetition"] == 1
+        )
+        failed["grade"].update({
+            "passed": 0,
+            "acceptance_passed": 0,
+            "task_success": False,
+        })
+        incomplete_report = handoff.report(incomplete)
+        self.assertIn("cannot establish a product token-saving claim", incomplete_report)
+        self.assertIn(
+            "only 8/9 Packet v3/Capsule v4 pairs were jointly successful",
+            incomplete_report,
+        )
+
+    def test_capsule_cache_price_advantage_range_handles_both_crossing_directions(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_cache_range", HANDOFF)
+
+        def aggregates(
+            baseline_uncached: int,
+            baseline_cached: int,
+            candidate_uncached: int,
+            candidate_cached: int,
+        ) -> dict[str, dict[str, int]]:
+            return {
+                "packet": {
+                    "total_input_tokens": baseline_uncached + baseline_cached,
+                    "total_uncached_input_tokens": baseline_uncached,
+                },
+                "capsule": {
+                    "total_input_tokens": candidate_uncached + candidate_cached,
+                    "total_uncached_input_tokens": candidate_uncached,
+                },
+            }
+
+        self.assertEqual(
+            handoff.input_cache_price_advantage_range(
+                aggregates(100, 100, 90, 90), handoff.CAPSULE_V4
+            ),
+            (0.0, 1.0),
+        )
+        self.assertEqual(
+            handoff.input_cache_price_advantage_range(
+                aggregates(100, 100, 110, 80), handoff.CAPSULE_V4
+            ),
+            (0.5, 1.0),
+        )
+        self.assertEqual(
+            handoff.input_cache_price_advantage_range(
+                aggregates(100, 100, 90, 120), handoff.CAPSULE_V4
+            ),
+            (0.0, 0.5),
+        )
+        self.assertIsNone(
+            handoff.input_cache_price_advantage_range(
+                aggregates(100, 100, 110, 110), handoff.CAPSULE_V4
+            )
+        )
+
     def test_implementation_report_requires_exact_result_keys(self) -> None:
         cases = benchmark_module.discover_cases()
         semantic_specs = {
@@ -1353,47 +2438,48 @@ class BenchmarkCliTest(unittest.TestCase):
             benchmark_module.CASES_DIR,
         )
         results = []
-        run_order = 0
-        for case in cases:
+        schedule = benchmark_module.implementation_job_schedule(cases, 3, 20260901)
+        for run_order, (case, repetition, variant) in enumerate(schedule, start=1):
             snapshot = document["fixture_snapshot"][case.id]
-            for repetition in range(1, 4):
-                for variant in ("baseline", "semantic"):
-                    run_order += 1
-                    results.append({
-                        "case": case.id,
-                        "pair_id": f"{case.id}:r{repetition}",
-                        "variant": variant,
-                        "repetition": repetition,
-                        "run_order": run_order,
-                        "spec": snapshot["metrics"][variant],
-                        "provenance": {
-                            "spec_sha256": snapshot["variants"][variant],
-                            "prompt_sha256": snapshot["prompts"][variant],
-                            "starter_sha256": snapshot["starter_sha256"],
-                            "fixture_sha256": snapshot["fixture_sha256"],
-                        },
-                        "provider": {
-                            "return_code": 0,
-                            "event_errors": [],
-                            "duration_seconds": 1.0,
-                            "tool_call_total": 1,
-                            "usage": {
-                                "input_tokens": 100,
-                                "uncached_input_tokens": 100,
-                                "output_tokens": 10,
-                            },
-                        },
-                        "verification": None,
-                        "grade": {
-                            "passed": 1,
-                            "total": 1,
-                            "acceptance_passed": 1,
-                            "acceptance_total": 1,
-                            "task_success": True,
-                        },
-                        "cost_usd": None,
-                        "error": None,
-                    })
+            results.append({
+                "case": case.id,
+                "pair_id": f"{case.id}:r{repetition}",
+                "variant": variant,
+                "repetition": repetition,
+                "run_order": run_order,
+                "spec": snapshot["metrics"][variant],
+                "provenance": {
+                    "spec_sha256": snapshot["variants"][variant],
+                    "prompt_sha256": snapshot["prompts"][variant],
+                    "starter_sha256": snapshot["starter_sha256"],
+                    "fixture_sha256": snapshot["fixture_sha256"],
+                },
+                "provider": {
+                    "return_code": 0,
+                    "event_errors": [],
+                    "duration_seconds": 1.0,
+                    "tool_call_total": 1,
+                    "usage": {
+                        "input_tokens": 100,
+                        "uncached_input_tokens": 100,
+                        "output_tokens": 10,
+                    },
+                },
+                "verification": None,
+                "grade": {
+                    "passed": snapshot["grading"]["test_total"],
+                    "total": snapshot["grading"]["test_total"],
+                    "acceptance_passed": snapshot["grading"][
+                        "acceptance_total"
+                    ],
+                    "acceptance_total": snapshot["grading"][
+                        "acceptance_total"
+                    ],
+                    "task_success": True,
+                },
+                "cost_usd": None,
+                "error": None,
+            })
         document["results"] = results
         self.assertTrue(
             benchmark_module.implementation_report_is_credible(document, results)
@@ -1404,6 +2490,37 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertFalse(
             benchmark_module.implementation_report_is_credible(
                 document, duplicate_replacing_missing
+            )
+        )
+
+        generated = json.loads(json.dumps(document))
+        generated["semantic_source"] = "generated"
+        self.assertTrue(
+            benchmark_module.implementation_report_is_credible(
+                generated,
+                generated["results"],
+            )
+        )
+        forged_hash = json.loads(json.dumps(generated))
+        case_id = forged_hash["cases"][0]
+        forged_hash["fixture_snapshot"][case_id]["variants"]["semantic"] = "0" * 64
+        for result in forged_hash["results"]:
+            if result["case"] == case_id and result["variant"] == "semantic":
+                result["provenance"]["spec_sha256"] = "0" * 64
+        self.assertFalse(
+            benchmark_module.implementation_report_is_credible(
+                forged_hash,
+                forged_hash["results"],
+            )
+        )
+        forged_bytes = json.loads(json.dumps(generated))
+        forged_bytes["fixture_snapshot"][case_id]["specifications"]["semantic"] = (
+            benchmark_module.attest_text("forged generated specification\n")
+        )
+        self.assertFalse(
+            benchmark_module.implementation_report_is_credible(
+                forged_bytes,
+                forged_bytes["results"],
             )
         )
 
@@ -1454,12 +2571,14 @@ class BenchmarkCliTest(unittest.TestCase):
                 "selected_attempt": 1,
                 "attempts": [{
                     "attempt": 1,
+                    "specification": benchmark_module.attest_text(semantic),
                     "semantic": semantic_metrics,
                     "provenance": provenance,
                     "provider": provider,
                     "error": None,
                 }],
                 "source": benchmark_module.text_metrics(source),
+                "specification": benchmark_module.attest_text(semantic),
                 "semantic": semantic_metrics,
                 "provenance": provenance,
                 "provider": provider,
@@ -1467,6 +2586,101 @@ class BenchmarkCliTest(unittest.TestCase):
             })
         generation["results"] = results
         self.assertTrue(lifecycle.generation_report_is_credible(generation))
+
+        forged_conversion = json.loads(json.dumps(generation))
+        for result in forged_conversion["results"]:
+            result["attempts"][0]["conversion_check"] = {
+                "source": {"bytes": 999999, "words": 999999, "tokens": 999999},
+                "output": {"bytes": 1, "words": 1, "tokens": 1},
+            }
+        self.assertTrue(
+            lifecycle.generation_report_is_credible(forged_conversion)
+        )
+
+        implementation = benchmark_module.create_run_document(
+            Namespace(
+                provider="codex",
+                model="test-model",
+                reasoning_effort="medium",
+                repetitions=3,
+                seed=20260901,
+                pricing={},
+                semantic_dir=Path("generated-specs"),
+            ),
+            cases,
+            {
+                case.id: case.spec_path("semantic").read_text(encoding="utf-8")
+                for case in cases
+            },
+            benchmark_module.CASES_DIR,
+        )
+        implementation_results = []
+        for run_order, (case, repetition, variant) in enumerate(
+            benchmark_module.implementation_job_schedule(cases, 3, 20260901),
+            start=1,
+        ):
+            snapshot = implementation["fixture_snapshot"][case.id]
+            grading = snapshot["grading"]
+            implementation_results.append({
+                "case": case.id,
+                "pair_id": f"{case.id}:r{repetition}",
+                "variant": variant,
+                "repetition": repetition,
+                "run_order": run_order,
+                "spec": snapshot["metrics"][variant],
+                "provenance": {
+                    "spec_sha256": snapshot["variants"][variant],
+                    "prompt_sha256": snapshot["prompts"][variant],
+                    "starter_sha256": snapshot["starter_sha256"],
+                    "fixture_sha256": snapshot["fixture_sha256"],
+                },
+                "provider": {
+                    "return_code": 0,
+                    "event_errors": [],
+                    "duration_seconds": 1.0,
+                    "tool_call_total": 1,
+                    "usage": {
+                        "input_tokens": 100,
+                        "uncached_input_tokens": 100,
+                        "output_tokens": 10,
+                    },
+                },
+                "verification": None,
+                "grade": {
+                    "passed": grading["test_total"],
+                    "total": grading["test_total"],
+                    "acceptance_passed": grading["acceptance_total"],
+                    "acceptance_total": grading["acceptance_total"],
+                    "task_success": True,
+                },
+                "cost_usd": None,
+                "error": None,
+            })
+        implementation["results"] = implementation_results
+        self.assertTrue(
+            benchmark_module.implementation_report_is_credible(
+                implementation,
+                implementation_results,
+            )
+        )
+        lifecycle_report = lifecycle.render_report(
+            forged_conversion,
+            implementation,
+        )
+        self.assertNotIn("999999", lifecycle_report)
+        self.assertIn(
+            "Generated document token reduction: `not claimed`",
+            lifecycle_report,
+        )
+        self.assertNotIn("directional smoke run", lifecycle_report)
+
+        forged_specification = json.loads(json.dumps(generation))
+        forged_specification["results"][0]["specification"] = (
+            benchmark_module.attest_text("forged generated specification\n")
+        )
+        self.assertFalse(
+            lifecycle.generation_report_is_credible(forged_specification)
+        )
 
         duplicate_replacing_missing = json.loads(json.dumps(generation))
         duplicate_replacing_missing["results"][-1] = duplicate_replacing_missing[
