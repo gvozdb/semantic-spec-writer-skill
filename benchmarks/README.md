@@ -216,15 +216,15 @@ Published `gpt-5.6-terra`, medium-reasoning Packet v3 run:
 See the [rendered report](../HANDOFF_BENCHMARK.md) and
 [historical raw result — unsanitized, non-secret-only](results/published/gpt-5.6-terra-medium-20260902-execution-packet/handoff-r3.json).
 
-Run the two-arm Packet v3 versus Capsule v4 benchmark independently:
+Run the two-arm Packet v3 versus Capsule v5 benchmark independently:
 
 ```bash
-python3 -B benchmarks/handoff.py static --comparison capsule-v4
+python3 -B benchmarks/handoff.py static --comparison capsule-v5
 
 CAPSULE_RUN_NAME=your-model-medium-yyyymmdd-context-capsule
 
 python3 -B benchmarks/handoff.py run \
-  --comparison capsule-v4 \
+  --comparison capsule-v5 \
   --provider codex \
   --model YOUR_MODEL \
   --reasoning-effort medium \
@@ -244,7 +244,9 @@ python3 -B benchmarks/handoff.py report \
 The Capsule report distinguishes total discovery/read events from classified
 pre-edit events, measures combined input plus output tokens, and reports an
 input-only cache-price break-even without hardcoding provider prices. Provider
-telemetry and grades remain self-reported; Git history is the publication trust
+telemetry and grades remain self-reported; a separate secure routed-file
+comparison makes no-edit and partial-edit candidate outcomes fail regardless of
+their reported status or verification exit. Git history is the publication trust
 boundary. Static overhead in the run report is byte-only, which is reproducible
 without an optional tokenizer package. Do not publish an exact tokenizer claim
 unless the result schema records and credibility-checks the encoding, package

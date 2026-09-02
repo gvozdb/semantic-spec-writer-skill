@@ -55,7 +55,7 @@ jobs:
         run: |
           python3 benchmarks/benchmark.py static --check
           python3 benchmarks/handoff.py static
-          python3 benchmarks/handoff.py static --comparison capsule-v4
+          python3 benchmarks/handoff.py static --comparison capsule-v5
 
       - name: Run benchmark harness tests
         run: python3 -W error::ResourceWarning -m unittest discover -s benchmarks/tests -v

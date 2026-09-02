@@ -881,25 +881,210 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertIsInstance(first.decode("utf-8"), str)
             checked = capsule_module.check_capsule(repo, first, packet=packet)
             self.assertTrue(checked["valid"], checked)
-            self.assertEqual(checked["version"], 4)
+            self.assertEqual(checked["version"], 5)
             self.assertEqual(checked["source_count"], 3)
+            _, _, embedded, _, _ = capsule_module._parse_capsule(first)
+            self.assertEqual(
+                capsule_module.packet_checker.parse_execution_policies(
+                    embedded.decode("utf-8")
+                ),
+                [capsule_module.CAPSULE_EXECUTION],
+            )
             self.assertIn(
                 b'"first_action":"file_change_or_one_routed_read"',
                 first,
             )
+            self.assertIn(b'"no_edit":"failure"', first)
+            self.assertIn(b'"pre_edit_verification":"forbidden"', first)
+            self.assertEqual(
+                first.splitlines()[1],
+                b"@EXECUTE " + capsule_module.CAPSULE_CONTROL.encode("ascii"),
+            )
             self.assertIn(
-                b"execution: sealed frames are exact patch operands -> edit "
-                b"immediately or use at most one bundled routed read when needed; no "
-                b"discovery/status/baseline V1 -> edit all routed symbols in one pass "
-                b"-> V1 once -> stop on pass; expand only after exact-frame mismatch "
-                b"or failed V1",
+                b'"kind":"packet","role":"authoritative_task_requirements"',
                 first,
             )
+            self.assertIn(b'"role":"current_pre_edit_source"', first)
+            self.assertIn(
+                b"execution: " + capsule_module.CAPSULE_EXECUTION.encode("ascii"),
+                first,
+            )
+            self.assertNotIn(b"exact patch operands", first)
             self.assertNotIn(
                 b"execution: routed read once -> all do -> V1 once -> stop on pass; "
                 b"expand only on contradiction/failure",
                 first,
             )
+
+    def test_capsule_execution_prompt_frontloads_action_gate(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_prompt", HANDOFF)
+        capsule_module = load_module("context_capsule_prompt", CONTEXT_CAPSULE)
+        prompt = handoff.execution_prompt(
+            "opaque",
+            "capsule",
+            handoff.CAPSULE_V5,
+        )
+
+        self.assertIn(capsule_module.CAPSULE_CONTROL, prompt)
+        self.assertIn(
+            "A passing pre-edit V1 is failure, not completion",
+            prompt,
+        )
+        self.assertLess(
+            prompt.index("Capsule execution gate:"),
+            prompt.index("--- BEGIN SPECIFICATION ---"),
+        )
+        self.assertNotIn(
+            "Capsule execution gate:",
+            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
+        )
+
+    def test_capsule_routed_edit_progress_requires_every_edit_target(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_progress", HANDOFF)
+        source = HANDOFF_CASES / "tenant-settings"
+        packet = (source / "packet.spec.ctx").read_text(encoding="utf-8")
+        starter = benchmark_module.snapshot_fixture_tree(source / "starter")
+        with tempfile.TemporaryDirectory(prefix="capsule-progress-") as directory:
+            workspace = Path(directory) / "workspace"
+            shutil.copytree(source / "starter", workspace)
+            required, changed = handoff.routed_edit_progress(
+                workspace,
+                packet,
+                starter,
+            )
+            self.assertGreater(required, 1)
+            self.assertEqual(changed, 0)
+
+            first_target = handoff.context_capsule_module().packet_checker.parse_routes(
+                packet
+            )[0]
+            shutil.copy2(
+                source / "reference" / first_target.relative_path,
+                workspace / first_target.relative_path,
+            )
+            self.assertEqual(
+                handoff.routed_edit_progress(workspace, packet, starter),
+                (required, 1),
+            )
+
+            shutil.copytree(source / "reference", workspace, dirs_exist_ok=True)
+            self.assertEqual(
+                handoff.routed_edit_progress(workspace, packet, starter),
+                (required, required),
+            )
+
+    def test_capsule_no_edit_and_pre_edit_v1_fail_the_run(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_no_edit", HANDOFF)
+        real_grader = handoff.core.run_grader
+        real_verification = handoff.core.run_verification
+
+        def no_edit_provider(_case, _workspace):
+            return {
+                "return_code": 0,
+                "duration_seconds": 0.001,
+                "usage": {},
+                "tool_calls": {"command_execution": 1},
+                "tool_call_total": 1,
+                "thread_id": None,
+                "final_message_metadata": benchmark_module.text_metadata(""),
+                "event_errors": [],
+                "stderr_metadata": benchmark_module.text_metadata(""),
+                "command_categories": {"discovery": 0, "read": 0, "verify": 1},
+                "pre_edit_command_categories": {
+                    "discovery": 0,
+                    "read": 0,
+                    "verify": 1,
+                },
+                "pre_edit_command_executions": 1,
+                "pre_edit_telemetry": {
+                    "schema_version": 2,
+                    "status": "no_routed_edit_observed",
+                    "target_count": 4,
+                    "file_change_events": 0,
+                    "unclassified_file_change_events": 0,
+                    "substantive_file_change_events": 0,
+                },
+            }
+
+        def passing_grader(_case, _workspace, **kwargs):
+            grading = kwargs.get("grading_snapshot")
+            if grading is None:
+                return real_grader(_case, _workspace, **kwargs)
+            return {
+                "passed": grading.test_total,
+                "total": grading.test_total,
+                "acceptance_passed": grading.acceptance_total,
+                "acceptance_total": grading.acceptance_total,
+                "task_success": True,
+                "failures": [],
+            }
+
+        def passing_run_verification(_case, workspace, **kwargs):
+            if "execution-packet-bench-" in str(workspace):
+                return {"return_code": 0}
+            return real_verification(_case, workspace, **kwargs)
+
+        with tempfile.TemporaryDirectory(prefix="capsule-no-edit-") as directory:
+            output = Path(directory) / "result.json"
+            args = Namespace(
+                provider="mock",
+                model=None,
+                reasoning_effort=None,
+                repetitions=1,
+                seed=20260901,
+                case=["refund-ledger"],
+                comparison="capsule-v5",
+                variant=[],
+                timeout_seconds=30,
+                output=output,
+                force=False,
+            )
+            with mock.patch.object(
+                handoff.core,
+                "run_mock",
+                side_effect=no_edit_provider,
+            ), mock.patch.object(
+                handoff.core,
+                "run_verification",
+                side_effect=passing_run_verification,
+            ), mock.patch.object(
+                handoff.core,
+                "run_grader",
+                side_effect=passing_grader,
+            ):
+                handoff.run(args)
+
+            document = json.loads(output.read_text(encoding="utf-8"))
+            capsule = next(
+                result
+                for result in document["results"]
+                if result["variant"] == "capsule"
+            )
+            self.assertEqual(
+                capsule["error"]["codes"],
+                ["capsule_no_routed_edit", "capsule_pre_edit_verification"],
+            )
+            self.assertFalse(capsule["grade"]["task_success"])
+
+    def test_only_fixed_failure_codes_survive_error_redaction(self) -> None:
+        self.assertEqual(
+            benchmark_module.redact_error({
+                "codes": [
+                    "capsule_pre_edit_verification",
+                    "capsule_no_routed_edit",
+                    "capsule_no_routed_edit",
+                ]
+            }),
+            {
+                "codes": [
+                    "capsule_no_routed_edit",
+                    "capsule_pre_edit_verification",
+                ]
+            },
+        )
+        rejected = benchmark_module.redact_error({"codes": ["private_secret"]})
+        self.assertEqual(set(rejected), {"bytes", "sha256"})
+        self.assertNotIn("codes", rejected)
 
     def test_context_capsule_binds_trusted_packet(self) -> None:
         capsule_module = load_module("context_capsule_packet_binding", CONTEXT_CAPSULE)
@@ -948,6 +1133,26 @@ class BenchmarkCliTest(unittest.TestCase):
             checked = capsule_module.check_capsule(repo, tampered, packet=packet)
             self.assertFalse(checked["valid"])
             self.assertIn("seal", "\n".join(checked["errors"]).lower())
+
+    def test_context_capsule_rejects_changed_execution_control(self) -> None:
+        capsule_module = load_module("context_capsule_control", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="context-capsule-control-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            shutil.copy2(source / "packet.spec.ctx", packet)
+            capsule = capsule_module.build_capsule(repo, packet)
+            tampered = capsule.replace(
+                b"IMPLEMENTATION REQUIRED",
+                b"IMPLEMENTATION OPTIONAL",
+                1,
+            )
+
+            checked = capsule_module.check_capsule(repo, tampered, packet=packet)
+            self.assertFalse(checked["valid"])
+            self.assertIn("execution control", "\n".join(checked["errors"]))
 
     def test_context_capsule_rejects_trailing_and_non_utf8_bytes(self) -> None:
         capsule_module = load_module("context_capsule_bytes", CONTEXT_CAPSULE)
@@ -1167,7 +1372,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(forced.returncode, 0, forced.stderr)
-            self.assertTrue(output.read_bytes().startswith(b"CAPSULE-V4\n"))
+            self.assertTrue(output.read_bytes().startswith(b"CAPSULE-V5\n"))
 
     def test_context_capsule_build_rejects_output_aliasing_input_file(self) -> None:
         source = HANDOFF_CASES / "tenant-settings"
@@ -1225,7 +1430,7 @@ class BenchmarkCliTest(unittest.TestCase):
             (root / "tiktoken.py").write_text(
                 "class Encoder:\n"
                 "    def encode(self, text):\n"
-                "        return [0] * (2 if text.startswith('CAPSULE-V4') else 1)\n"
+                "        return [0] * (2 if text.startswith('CAPSULE-V5') else 1)\n"
                 "def get_encoding(name):\n"
                 "    return Encoder()\n",
                 encoding="utf-8",
@@ -1997,7 +2202,7 @@ class BenchmarkCliTest(unittest.TestCase):
         revision_check.start()
         self.addCleanup(revision_check.stop)
         cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
-        config = handoff.CAPSULE_V4
+        config = handoff.CAPSULE_V5
         snapshots = {
             case.id: handoff.case_snapshot(case, config) for case in cases
         }
@@ -2041,6 +2246,14 @@ class BenchmarkCliTest(unittest.TestCase):
                                 "read": 0,
                                 "verify": 0,
                             },
+                            "pre_edit_telemetry": {
+                                "schema_version": 2,
+                                "status": "routed_edit_observed",
+                                "target_count": 1,
+                                "file_change_events": 1,
+                                "unclassified_file_change_events": 0,
+                                "substantive_file_change_events": 1,
+                            } if is_capsule else None,
                             "usage": {
                                 "input_tokens": input_tokens,
                                 "uncached_input_tokens": uncached_input_tokens,
@@ -2066,9 +2279,9 @@ class BenchmarkCliTest(unittest.TestCase):
         document = {
             "schema_version": 2,
             "kind": "semantic-context-capsule-comparison",
-            "comparison": "capsule-v4",
+            "comparison": "capsule-v5",
             "packet_version": 3,
-            "capsule_version": 4,
+            "capsule_version": 5,
             "run_id": "capsule-test",
             "provider": "codex",
             "model": "test-model",
@@ -2117,8 +2330,8 @@ class BenchmarkCliTest(unittest.TestCase):
             (published / "HANDOFF.md").read_text(encoding="utf-8"),
         )
 
-    def test_handoff_legacy_capsule_report_stays_compatible(self) -> None:
-        handoff = load_module("benchmark_handoff_legacy_capsule_report", HANDOFF)
+    def test_published_capsule_report_stays_reproducible(self) -> None:
+        handoff = load_module("benchmark_handoff_published_capsule_report", HANDOFF)
         published = (
             ROOT
             / "benchmarks"
@@ -2127,7 +2340,7 @@ class BenchmarkCliTest(unittest.TestCase):
             / "gpt-5.6-terra-medium-20260902-context-capsule"
         )
         if not published.is_dir():
-            self.skipTest("optional historical Capsule publication is not present")
+            self.skipTest("optional published Capsule evidence is not present")
         document = json.loads((published / "capsule-r3.json").read_text(encoding="utf-8"))
         self.assertEqual(
             handoff.report(document),
@@ -2151,7 +2364,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     "--provider",
                     "mock",
                     "--comparison",
-                    "capsule-v4",
+                    "capsule-v5",
                     "--output",
                     str(result_path),
                 ],
@@ -2164,8 +2377,8 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
             document = json.loads(result_path.read_text(encoding="utf-8"))
             self.assertEqual(document["kind"], "semantic-context-capsule-comparison")
-            self.assertEqual(document["comparison"], "capsule-v4")
-            self.assertEqual(document["capsule_version"], 4)
+            self.assertEqual(document["comparison"], "capsule-v5")
+            self.assertEqual(document["capsule_version"], 5)
             self.assertEqual(document["variants"], ["packet", "capsule"])
             self.assertEqual(len(document["results"]), 6)
             serialized = json.dumps(document)
@@ -2200,7 +2413,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     str(HANDOFF),
                     "static",
                     "--comparison",
-                    "capsule-v4",
+                    "capsule-v5",
                     "--json",
                 ],
                 cwd=ROOT,
@@ -2305,6 +2518,7 @@ class BenchmarkCliTest(unittest.TestCase):
         report = handoff.report(document)
         self.assertIn("cannot establish a product token-saving claim", report)
         self.assertIn("not independently attested", report)
+        self.assertIn("Routed action gate: **9/9** Capsule v5 runs.", report)
 
         recovery_read = json.loads(json.dumps(document))
         next(
@@ -2373,7 +2587,7 @@ class BenchmarkCliTest(unittest.TestCase):
         incomplete_report = handoff.report(incomplete)
         self.assertIn("cannot establish a product token-saving claim", incomplete_report)
         self.assertIn(
-            "only 8/9 Packet v3/Capsule v4 pairs were jointly successful",
+            "only 8/9 Packet v3/Capsule v5 pairs were jointly successful",
             incomplete_report,
         )
 
@@ -2399,25 +2613,25 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 90), handoff.CAPSULE_V4
+                aggregates(100, 100, 90, 90), handoff.CAPSULE_V5
             ),
             (0.0, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 80), handoff.CAPSULE_V4
+                aggregates(100, 100, 110, 80), handoff.CAPSULE_V5
             ),
             (0.5, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 120), handoff.CAPSULE_V4
+                aggregates(100, 100, 90, 120), handoff.CAPSULE_V5
             ),
             (0.0, 0.5),
         )
         self.assertIsNone(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 110), handoff.CAPSULE_V4
+                aggregates(100, 100, 110, 110), handoff.CAPSULE_V5
             )
         )
 

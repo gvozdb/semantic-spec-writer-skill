@@ -24,12 +24,12 @@ CAPSULE_SCRIPT = (
 )
 FIXTURE = ROOT / "benchmarks" / "handoff-cases" / "tenant-settings"
 EXPECTED_CAPSULE_SHA256 = (
-    "7faadb7f9a318e11f6b16711d10a9deb964da8844c73c7626d3e0613a9bfce04"
+    "5312b75274ff7eecfa8bb97b9302479e95f447f9dbf6c697499549f288f5ae28"
 )
-PUBLISHED_CAPSULE_SHA256 = {
-    "refund-ledger": "87b5ba8e57f25b323d7346fbe3339af6c487d8ea3f721d58886ae4969cd38c4f",
-    "tenant-settings": "7faadb7f9a318e11f6b16711d10a9deb964da8844c73c7626d3e0613a9bfce04",
-    "webhook-dispatch": "8b080bbcec87fb7636bcd7e25fe64ad562decc6a9e8ea47fc376c1f65fb76666",
+FIXTURE_CAPSULE_SHA256 = {
+    "refund-ledger": "a5c576b741c92d43936688fe87d27389ea81a131eda00a6f5ad5acbca356cdec",
+    "tenant-settings": "5312b75274ff7eecfa8bb97b9302479e95f447f9dbf6c697499549f288f5ae28",
+    "webhook-dispatch": "417eb95fdc4c86256a30b055d730d9823e52d4282fcf0441ab9809db893bbc5f",
 }
 
 
@@ -67,6 +67,7 @@ class CapsuleSecurityTest(unittest.TestCase):
         embedded_packet = self.capsule._embedded_packet(packet_text).encode("utf-8")
         packet_descriptor = self.capsule._packet_descriptor(embedded_packet)
         body = bytearray(self.capsule.MAGIC)
+        body.extend(self.capsule.EXECUTE_LINE)
         body.extend(
             self.capsule.HEADER_PREFIX
             + self.capsule._canonical_json(header)
@@ -75,6 +76,39 @@ class CapsuleSecurityTest(unittest.TestCase):
         body.extend(self.capsule._frame(packet_descriptor, embedded_packet))
         for descriptor, payload in sources:
             body.extend(self.capsule._frame(descriptor, payload))
+        body.extend(self.capsule._seal_line(self.capsule._sha256(body)))
+        return bytes(body)
+
+    def _legacy_capsule(self) -> bytes:
+        current = self.capsule.build_capsule(self.repo, self.packet)
+        header, _, embedded, sources, _ = self.capsule._parse_capsule(current)
+        header = dict(header)
+        header["version"] = self.capsule.LEGACY_CAPSULE_VERSION
+        header["protocol"] = self.capsule.LEGACY_CAPSULE_PROTOCOL
+        legacy_packet = self.capsule._rewrite_execution_policy(
+            embedded.decode("utf-8"),
+            self.capsule.CAPSULE_EXECUTION,
+            self.capsule.LEGACY_CAPSULE_EXECUTION,
+        ).encode("utf-8")
+        body = bytearray(self.capsule.LEGACY_MAGIC)
+        body.extend(
+            self.capsule.HEADER_PREFIX
+            + self.capsule._canonical_json(header)
+            + b"\n"
+        )
+        body.extend(
+            self.capsule._frame(
+                self.capsule._packet_descriptor(
+                    legacy_packet,
+                    self.capsule.LEGACY_CAPSULE_VERSION,
+                ),
+                legacy_packet,
+            )
+        )
+        for descriptor, payload in sources:
+            legacy_descriptor = dict(descriptor)
+            legacy_descriptor.pop("role")
+            body.extend(self.capsule._frame(legacy_descriptor, payload))
         body.extend(self.capsule._seal_line(self.capsule._sha256(body)))
         return bytes(body)
 
@@ -130,9 +164,22 @@ class CapsuleSecurityTest(unittest.TestCase):
         self.assertEqual(output.stat().st_mode & 0o777, 0o600)
         self.assertEqual(list(self.root.glob(".*.capsule-stage")), [])
 
-    def test_published_fixture_capsules_keep_exact_bytes(self) -> None:
+    def test_legacy_v4_capsule_remains_readable_for_migration(self) -> None:
+        legacy = self._legacy_capsule()
+        self.assertTrue(legacy.startswith(self.capsule.LEGACY_MAGIC))
+        self.assertNotIn(self.capsule.EXECUTE_LINE, legacy)
+
+        checked = self.capsule.check_capsule(
+            self.repo,
+            legacy,
+            packet=self.packet,
+        )
+        self.assertTrue(checked["valid"], checked)
+        self.assertEqual(checked["version"], 4)
+
+    def test_fixture_capsules_keep_exact_bytes(self) -> None:
         cases = ROOT / "benchmarks" / "handoff-cases"
-        for name, expected_sha256 in PUBLISHED_CAPSULE_SHA256.items():
+        for name, expected_sha256 in FIXTURE_CAPSULE_SHA256.items():
             with self.subTest(name=name):
                 capsule = self.capsule.build_capsule(
                     cases / name / "starter",

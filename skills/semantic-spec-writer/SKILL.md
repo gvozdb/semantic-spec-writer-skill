@@ -37,7 +37,7 @@ A smaller file is useful only when it remains faster to execute correctly. When 
 - Prefer exact paths and one runnable verification command over generic implementation advice.
 - For an execution packet, spend authoring effort only on facts that remove downstream discovery or prevent a wrong edit. Do not turn the packet into a repository dump.
 - Give execution packets the canonical bounded downstream loop from the reference: one routed read, one implementation pass, one declared verification, then stop on success. Expansion requires a concrete contradiction or failure.
-- For a Capsule v4 handoff, validate the trusted Packet v3 first, build once, and check it against both the current repository and original packet before execution. Do not rebuild or reread the capsule in a loop.
+- For a Capsule v5 handoff, validate the trusted Packet v3 first, build once, and check it against both the current repository and original packet before execution. Build only for pending changes: its sealed control treats source frames as current pre-edit data and requires a substantive routed edit before `V1`. Do not rebuild or reread the capsule in a loop.
 
 ## Format
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify tamper-evident Capsule v4 execution contexts.
+"""Build and verify tamper-evident Capsule v5 execution contexts.
 
 Capsules are deliberately small, self-contained byte streams.  Their packet and
 source payloads are length-framed, so routed source can contain arbitrary UTF-8
@@ -49,8 +49,20 @@ def _load_packet_checker() -> Any:
 
 packet_checker = _load_packet_checker()
 
-CAPSULE_VERSION = 4
+CAPSULE_VERSION = 5
+LEGACY_CAPSULE_VERSION = 4
 CAPSULE_PROTOCOL = {
+    "completion": "substantive_routed_edit_then_passing_V1",
+    "first_action": "file_change_or_one_routed_read",
+    "no_edit": "failure",
+    "pre_edit_discovery": "forbidden",
+    "pre_edit_read_budget": 1,
+    "pre_edit_verification": "forbidden",
+    "recovery": "exact_frame_mismatch_or_failed_V1",
+    "source_authority": "sealed_current_source_frames",
+    "verification": "V1_once_after_substantive_routed_edit",
+}
+LEGACY_CAPSULE_PROTOCOL = {
     "first_action": "file_change_or_one_routed_read",
     "pre_edit_discovery": "forbidden",
     "pre_edit_read_budget": 1,
@@ -58,16 +70,34 @@ CAPSULE_PROTOCOL = {
     "source_authority": "sealed_frames",
     "verification": "V1_after_edit_once",
 }
+CAPSULE_CONTROL = (
+    "IMPLEMENTATION REQUIRED. The packet frame is the task. Source frames are current "
+    "pre-edit repository bytes, not patches or desired output. FIRST make every routed "
+    "edit; one bundled routed read is allowed only for placement and must be followed "
+    "by edits. Before a substantive routed edit, do not run V1, tests, syntax checks, "
+    "status, discovery, or a baseline. A passing pre-edit V1 is failure, not completion. "
+    "THEN run V1 once; stop only when that post-edit V1 passes."
+)
 CAPSULE_EXECUTION = (
+    "IMPLEMENTATION REQUIRED: packet=task; source frames=current pre-edit bytes, not "
+    "desired output -> first implement every edit/create do, using at most one bundled "
+    "routed read only for placement -> before a substantive routed edit no V1/tests/"
+    "syntax/status/discovery/baseline; passing pre-edit V1=failure -> V1 once after edit "
+    "-> stop only on pass; expand only after exact-frame mismatch or failed V1"
+)
+LEGACY_CAPSULE_EXECUTION = (
     "sealed frames are exact patch operands -> edit immediately or use at most one "
     "bundled routed read when needed; no discovery/status/baseline V1 -> edit all "
     "routed symbols in one pass -> V1 once -> stop on pass; expand only after exact-"
     "frame mismatch or failed V1"
 )
-MAGIC = b"CAPSULE-V4\n"
+MAGIC = b"CAPSULE-V5\n"
+LEGACY_MAGIC = b"CAPSULE-V4\n"
+EXECUTE_PREFIX = b"@EXECUTE "
 HEADER_PREFIX = b"@HEADER "
 FRAME_PREFIX = b"@FRAME "
 SEAL_PREFIX = b"@SEAL "
+EXECUTE_LINE = EXECUTE_PREFIX + CAPSULE_CONTROL.encode("ascii") + b"\n"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_SOURCE_COUNT = 100_000
 # This bounds one complete wire artifact, rather than an individual Packet or
@@ -76,7 +106,7 @@ MAX_CAPSULE_BYTES = 128 * 1024 * 1024
 
 
 class CapsuleError(ValueError):
-    """A Capsule v4 input, framing, or validation failure."""
+    """A Capsule v5 input, framing, or validation failure."""
 
 
 def _sha256(data: bytes | bytearray | memoryview) -> str:
@@ -185,10 +215,21 @@ def _parse_capsule(
         data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise CapsuleError("capsule is not UTF-8") from exc
-    if not data.startswith(MAGIC):
+    if data.startswith(MAGIC):
+        wire_version = CAPSULE_VERSION
+        offset = len(MAGIC)
+        execute_line, offset = _line(data, offset, "execution control")
+        if execute_line != EXECUTE_LINE.removesuffix(b"\n"):
+            raise CapsuleError("capsule has invalid execution control")
+        expected_protocol = CAPSULE_PROTOCOL
+    elif data.startswith(LEGACY_MAGIC):
+        wire_version = LEGACY_CAPSULE_VERSION
+        offset = len(LEGACY_MAGIC)
+        expected_protocol = LEGACY_CAPSULE_PROTOCOL
+    else:
         raise CapsuleError("capsule has invalid magic")
 
-    header, offset = _prefixed_json(data, len(MAGIC), HEADER_PREFIX, "header")
+    header, offset = _prefixed_json(data, offset, HEADER_PREFIX, "header")
     _require_keys(
         header,
         {
@@ -200,14 +241,14 @@ def _parse_capsule(
         },
         "header",
     )
-    if type(header["version"]) is not int or header["version"] != CAPSULE_VERSION:
+    if type(header["version"]) is not int or header["version"] != wire_version:
         raise CapsuleError("capsule has unsupported version")
     if not _is_sha256(header["packet_sha256"]):
         raise CapsuleError("header has invalid packet_sha256")
     if not _is_sha256(header["route_sha256"]):
         raise CapsuleError("header has invalid route_sha256")
-    if header["protocol"] != CAPSULE_PROTOCOL:
-        raise CapsuleError("header has invalid Capsule v4 protocol")
+    if header["protocol"] != expected_protocol:
+        raise CapsuleError(f"header has invalid Capsule v{wire_version} protocol")
     source_count = header["source_count"]
     if (
         type(source_count) is not int
@@ -280,24 +321,34 @@ def _embedded_packet(packet_text: str) -> str:
     )
 
 
-def _reconstructed_packet(embedded_text: str) -> str:
+def _reconstructed_packet(
+    embedded_text: str,
+    version: int = CAPSULE_VERSION,
+) -> str:
+    execution = (
+        CAPSULE_EXECUTION
+        if version == CAPSULE_VERSION
+        else LEGACY_CAPSULE_EXECUTION
+    )
     policies = packet_checker.parse_execution_policies(embedded_text)
-    if policies != [CAPSULE_EXECUTION]:
-        raise CapsuleError("embedded packet requires exactly one canonical Capsule v4 policy")
+    if policies != [execution]:
+        raise CapsuleError(
+            f"embedded packet requires exactly one canonical Capsule v{version} policy"
+        )
     return _rewrite_execution_policy(
         embedded_text,
-        CAPSULE_EXECUTION,
+        execution,
         packet_checker.BOUNDED_EXECUTION,
     )
 
 
 def _require_capsule_v1_verification(text: str) -> None:
-    """Enforce the single verification step promised by Capsule v4."""
+    """Enforce the single verification step promised by Capsule v5."""
 
     entries = packet_checker.parse_verify_entries(text)
     if len(entries) != 1 or entries[0][0] != "V1":
         raise CapsuleError(
-            "Capsule v4 requires exactly one verification entry named V1"
+            "Capsule v5 requires exactly one verification entry named V1"
         )
 
 
@@ -361,26 +412,48 @@ def _range_metadata(target: Any) -> dict[str, int] | None:
     return {"start": target.start, "end": target.end}
 
 
-def _packet_descriptor(payload: bytes) -> dict[str, Any]:
-    return {
+def _packet_descriptor(
+    payload: bytes,
+    version: int = CAPSULE_VERSION,
+) -> dict[str, Any]:
+    descriptor = {
         "byte_length": len(payload),
         "content_sha256": _sha256(payload),
         "kind": "packet",
     }
+    if version == CAPSULE_VERSION:
+        descriptor["role"] = "authoritative_task_requirements"
+    return descriptor
 
 
-def _validate_packet_descriptor(descriptor: dict[str, Any]) -> None:
+def _validate_packet_descriptor(
+    descriptor: dict[str, Any],
+    version: int = CAPSULE_VERSION,
+) -> None:
+    expected_keys = {"byte_length", "content_sha256", "kind"}
+    if version == CAPSULE_VERSION:
+        expected_keys.add("role")
     _require_keys(
         descriptor,
-        {"byte_length", "content_sha256", "kind"},
+        expected_keys,
         "packet frame",
     )
     if descriptor["kind"] != "packet":
         raise CapsuleError("packet frame has invalid kind")
+    if (
+        version == CAPSULE_VERSION
+        and descriptor["role"] != "authoritative_task_requirements"
+    ):
+        raise CapsuleError("packet frame has invalid role")
 
 
-def _source_descriptor(index: int, target: Any, payload: bytes) -> dict[str, Any]:
-    return {
+def _source_descriptor(
+    index: int,
+    target: Any,
+    payload: bytes,
+    version: int = CAPSULE_VERSION,
+) -> dict[str, Any]:
+    descriptor = {
         "anchor": target.anchor,
         "byte_length": len(payload),
         "content_sha256": _sha256(payload),
@@ -389,24 +462,35 @@ def _source_descriptor(index: int, target: Any, payload: bytes) -> dict[str, Any
         "range": _range_metadata(target),
         "route_index": index,
     }
+    if version == CAPSULE_VERSION:
+        descriptor["role"] = "current_pre_edit_source"
+    return descriptor
 
 
-def _validate_source_descriptor(descriptor: dict[str, Any]) -> None:
+def _validate_source_descriptor(
+    descriptor: dict[str, Any],
+    version: int = CAPSULE_VERSION,
+) -> None:
+    expected_keys = {
+        "anchor",
+        "byte_length",
+        "content_sha256",
+        "kind",
+        "path",
+        "range",
+        "route_index",
+    }
+    if version == CAPSULE_VERSION:
+        expected_keys.add("role")
     _require_keys(
         descriptor,
-        {
-            "anchor",
-            "byte_length",
-            "content_sha256",
-            "kind",
-            "path",
-            "range",
-            "route_index",
-        },
+        expected_keys,
         "source frame",
     )
     if descriptor["kind"] not in {"read", "edit"}:
         raise CapsuleError("source frame has invalid kind")
+    if version == CAPSULE_VERSION and descriptor["role"] != "current_pre_edit_source":
+        raise CapsuleError("source frame has invalid role")
     if not isinstance(descriptor["path"], str) or not descriptor["path"]:
         raise CapsuleError("source frame has invalid path")
     if descriptor["anchor"] is not None and not isinstance(
@@ -489,7 +573,7 @@ def _base_metrics(
         "source_bytes": source_bytes,
         "source_count": header["source_count"],
         "valid": True,
-        "version": CAPSULE_VERSION,
+        "version": header["version"],
     }
     if tokens is not None:
         metrics["capsule"]["tokens"] = tokens
@@ -727,7 +811,7 @@ def _build_capsule(
             targets = packet_checker.parse_routes(v3_text)
             if len(targets) > MAX_SOURCE_COUNT:
                 raise CapsuleError(
-                    f"Packet v3 has too many routes for Capsule v4: "
+                    f"Packet v3 has too many routes for Capsule v5: "
                     f"{len(targets)} > {MAX_SOURCE_COUNT}"
                 )
             snapshot = packet_checker.open_route_snapshot(
@@ -782,6 +866,7 @@ def _build_capsule(
         embedded_descriptor = _packet_descriptor(embedded)
         planned_length = (
             len(MAGIC)
+            + len(EXECUTE_LINE)
             + len(header_line)
             + _frame_length(embedded_descriptor, embedded)
             + sum(_frame_length(descriptor, payload) for descriptor, payload in sources)
@@ -795,6 +880,7 @@ def _build_capsule(
         # wire format and ordering so ordinary Capsules remain byte-for-byte
         # deterministic.
         body = bytearray(MAGIC)
+        body.extend(EXECUTE_LINE)
         body.extend(header_line)
         body.extend(_frame(embedded_descriptor, embedded))
         for descriptor, payload in sources:
@@ -873,7 +959,7 @@ def build_capsule(
     encoder: Any | None = None,
     max_context_tokens: int | None = None,
 ) -> bytes:
-    """Build a Capsule v4 byte stream without writing it to disk."""
+    """Build a Capsule v5 byte stream without writing it to disk."""
 
     capsule, _, input_references = _build_capsule(
         repo,
@@ -894,7 +980,7 @@ def build_capsule_with_metrics(
     encoder: Any | None = None,
     max_context_tokens: int | None = None,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Build a Capsule v4 byte stream and return compact measurement data."""
+    """Build a Capsule v5 byte stream and return compact measurement data."""
 
     capsule, metrics, input_references = _build_capsule(
         repo,
@@ -944,7 +1030,7 @@ def _check_capsule(
     max_context_tokens: int | None = None,
 ) -> dict[str, Any]:
     if packet is None:
-        raise CapsuleError("trusted packet is required for Capsule v4 validity")
+        raise CapsuleError("trusted packet is required for Capsule v5 validity")
 
     repo_handle = _open_repo(repo)
     capsule_file = None
@@ -956,15 +1042,16 @@ def _check_capsule(
         header, packet_descriptor, embedded_packet, sources, seal = _parse_capsule(
             data
         )
-        _validate_packet_descriptor(packet_descriptor)
-        expected_packet_descriptor = _packet_descriptor(embedded_packet)
+        version = header["version"]
+        _validate_packet_descriptor(packet_descriptor, version)
+        expected_packet_descriptor = _packet_descriptor(embedded_packet, version)
         if packet_descriptor != expected_packet_descriptor:
             raise CapsuleError("packet frame metadata does not match embedded packet")
         try:
             embedded_text = embedded_packet.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise CapsuleError("embedded packet is not UTF-8") from exc
-        original_text = _reconstructed_packet(embedded_text)
+        original_text = _reconstructed_packet(embedded_text, version)
         original_bytes = original_text.encode("utf-8")
         if _sha256(original_bytes) != header["packet_sha256"]:
             raise CapsuleError("original packet SHA-256 mismatch")
@@ -977,7 +1064,7 @@ def _check_capsule(
             targets = packet_checker.parse_routes(v3_text)
             if len(targets) > MAX_SOURCE_COUNT:
                 raise CapsuleError(
-                    f"Packet v3 has too many routes for Capsule v4: "
+                    f"Packet v3 has too many routes for Capsule v5: "
                     f"{len(targets)} > {MAX_SOURCE_COUNT}"
                 )
             snapshot = packet_checker.open_route_snapshot(
@@ -1028,14 +1115,14 @@ def _check_capsule(
                 )
             payload = _selected_source(target, entry.file.data)
             expected_sources.append(
-                (_source_descriptor(index, target, payload), payload)
+                (_source_descriptor(index, target, payload, version), payload)
             )
         if len(sources) != len(expected_sources):
             raise CapsuleError("capsule source frame count does not match packet routes")
         for index, ((descriptor, payload), (expected, current)) in enumerate(
             zip(sources, expected_sources, strict=True)
         ):
-            _validate_source_descriptor(descriptor)
+            _validate_source_descriptor(descriptor, version)
             if descriptor != expected:
                 raise CapsuleError(f"source frame metadata mismatch at index {index}")
             if payload != current:
@@ -1080,7 +1167,7 @@ def check_capsule(
     encoder: Any | None = None,
     max_context_tokens: int | None = None,
 ) -> dict[str, Any]:
-    """Check a Capsule v4 without mutating the repository or capsule file.
+    """Check a Capsule v5 without mutating the repository or capsule file.
 
     Validation failures are returned as JSON-ready metrics rather than raised so
     benchmark callers can assert fail-closed behavior without shelling out.
@@ -1383,10 +1470,11 @@ def _open_output_regular(
 
 def _validate_capsule_artifact(data: bytes) -> None:
     _require_capsule_size(len(data), "existing Capsule output")
-    _, packet_descriptor, _, sources, _ = _parse_capsule(data)
-    _validate_packet_descriptor(packet_descriptor)
+    header, packet_descriptor, _, sources, _ = _parse_capsule(data)
+    version = header["version"]
+    _validate_packet_descriptor(packet_descriptor, version)
     for descriptor, _ in sources:
-        _validate_source_descriptor(descriptor)
+        _validate_source_descriptor(descriptor, version)
 
 
 def _same_named_inode(
@@ -1834,9 +1922,11 @@ def _write_atomic(target: _OutputTarget, data: bytes, force: bool) -> None:
             return
 
         if existing is None:
-            raise CapsuleError("--force requires an existing Capsule-v4 artifact")
+            raise CapsuleError("--force requires an existing supported Capsule artifact")
         if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
-            raise CapsuleError("--force target is not a regular Capsule-v4 artifact")
+            raise CapsuleError(
+                "--force target is not a regular supported Capsule artifact"
+            )
         existing_fd, existing_stat, existing_data = _open_output_regular(target)
         old_identity = _stat_identity(existing_stat)
         old_revision = _stat_revision(existing_stat)
@@ -2088,7 +2178,11 @@ def main() -> int:
         print(_compact_json(metrics))
         return 0 if metrics["valid"] else 1
     except CapsuleError as exc:
-        print(_compact_json({"errors": [str(exc)], "valid": False, "version": 4}))
+        print(
+            _compact_json(
+                {"errors": [str(exc)], "valid": False, "version": CAPSULE_VERSION}
+            )
+        )
         return 1
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -19,7 +19,7 @@ execution packets are intentionally bound to the validated repository snapshot.
 - allows short explanations as comment lines starting with `#`;
 - keeps domain vocabulary local to each specification;
 - compiles repository handoffs into file-owned `do` actions with validated source anchors and stale-route detection;
-- compiles Packet v3 plus exact routed source into sealed Capsule v4 execution context.
+- compiles Packet v3 plus exact routed source into sealed Capsule v5 execution context with an edit-before-verify action gate.
 
 ## Benefits
 
@@ -104,11 +104,15 @@ confidence interval crossed zero.
 
 ### Context capsule benchmark
 
-Capsule v4 embeds a validated Packet v3 and its exact routed source snapshot.
-Its adaptive fast path edits immediately or permits one bundled routed read,
-then runs the declared verification once. The two-arm harness compares Capsule
-v4 directly with Packet v3 and reports behavior, provider telemetry, and
-byte-auditable static overhead. Capsule benchmark numbers are published only in
+Capsule v5 embeds a validated Packet v3 and its exact routed source snapshot.
+Its sealed control identifies source frames as current pre-edit data, rejects a
+no-edit outcome, and permits at most one bundled routed read before the edit.
+The declared verification runs once after a substantive routed change. The
+two-arm harness compares Capsule v5 directly with Packet v3, securely compares
+every routed post-state with the captured starter, and fails no-edit or partial
+edit outcomes even if a check exits zero. It reports behavior, provider
+telemetry, and byte-auditable static overhead. Capsule benchmark numbers are
+published only in
 a separate release artifact after the current result and exact rendered report
 pass the isolated release credibility validator. That gate runs with Python
 `-I` from the launcher's exact `HEAD` Git blob, then attests the live launcher
@@ -236,7 +240,7 @@ Convert this technical specification to a compact .spec.ctx file.
 Create an implementation plan as .plan.ctx from this issue and the current codebase.
 Rewrite docs/auth.md as a self-contained semantic spec without inventing requirements.
 Create a repository execution packet for this issue with the smallest complete edit route.
-Compile this validated execution packet into a Capsule v4 handoff.
+Compile this validated execution packet into a Capsule v5 handoff.
 ```
 
 ## Repository execution packets
@@ -265,7 +269,7 @@ Packet v3 on the same multi-file tasks. Packet v3 versus Semantic v1 is the
 primary comparison; see [methodology and commands](benchmarks/README.md).
 
 For a costly handoff or repeated execution, compile the validated packet and
-its routed source into Capsule v4:
+its routed source into Capsule v5:
 
 ```bash
 python3 skills/semantic-spec-writer/scripts/context_capsule.py build \

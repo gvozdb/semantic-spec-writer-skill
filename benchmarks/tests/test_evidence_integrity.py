@@ -343,7 +343,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
         )
         revision_check.start()
         self.addCleanup(revision_check.stop)
-        config = handoff.CAPSULE_V4
+        config = handoff.CAPSULE_V5
         cases = core.discover_cases(cases_dir=HANDOFF_CASES)
         args = Namespace(
             provider="codex",
@@ -783,10 +783,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 handoff.paired_job_schedule(
                     handoff_cases,
                     3,
-                    list(handoff.CAPSULE_V4.variants),
+                    list(handoff.CAPSULE_V5.variants),
                     20260901,
                 ),
-                handoff.CAPSULE_V4.variants,
+                handoff.CAPSULE_V5.variants,
             ),
             (
                 handoff.paired_job_schedule(
@@ -977,7 +977,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 repetitions=1,
                 seed=20260901,
                 case=["tenant-settings"],
-                comparison="capsule-v4",
+                comparison="capsule-v5",
                 variant=[],
                 timeout_seconds=30,
                 output=output,
@@ -1090,8 +1090,8 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 document = handoff.create_document(
                     args,
                     [case],
-                    list(handoff.CAPSULE_V4.variants),
-                    handoff.CAPSULE_V4,
+                    list(handoff.CAPSULE_V5.variants),
+                    handoff.CAPSULE_V5,
                 )
 
             artifacts = handoff.capsule_snapshot_artifacts(
@@ -1187,7 +1187,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 ["tenant-settings"],
                 cases_dir=cases_dir,
             )[0]
-            snapshot = handoff.case_snapshot(case, handoff.CAPSULE_V4)
+            snapshot = handoff.case_snapshot(case, handoff.CAPSULE_V5)
             artifacts = handoff.capsule_snapshot_artifacts(snapshot)
             module = handoff.context_capsule_module()
             frame_hashes = handoff._capsule_source_hashes(

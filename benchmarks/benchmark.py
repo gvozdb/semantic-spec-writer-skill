@@ -75,6 +75,21 @@ PROVIDER_TOOL_CALL_FIELDS = frozenset({
     "mcp_tool_call",
     "web_search",
 })
+PUBLIC_ERROR_CODES = frozenset({
+    "capsule_incomplete_routed_edits",
+    "capsule_no_routed_edit",
+    "capsule_pre_edit_verification",
+    "capsule_routed_edit_attestation_failed",
+    "grader_exception",
+    "grader_timeout",
+    "provider_event_error",
+    "provider_exception",
+    "provider_nonzero_exit",
+    "provider_timeout",
+    "verification_exception",
+    "verification_failed",
+    "verification_timeout",
+})
 VERIFY_LINE = re.compile(r"^  V\d+:\s*`([^`]+)`\s*$")
 CASE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 EXECUTION_PACKET_CHECK = (
@@ -315,7 +330,20 @@ def redact_text(value: Any) -> dict[str, Any]:
 def redact_error(value: Any) -> dict[str, Any] | None:
     """Redact an error while preserving whether a result failed."""
 
-    return None if value is None else redact_text(value)
+    if value is None:
+        return None
+    if (
+        isinstance(value, dict)
+        and set(value) == {"codes"}
+        and isinstance(value["codes"], list)
+        and value["codes"]
+        and all(
+            isinstance(code, str) and code in PUBLIC_ERROR_CODES
+            for code in value["codes"]
+        )
+    ):
+        return {"codes": sorted(set(value["codes"]))}
+    return redact_text(value)
 
 
 def _redact_count_map(
@@ -3208,12 +3236,21 @@ def safe_workspace(
     return workspace
 
 
-def benchmark_prompt(spec: str) -> str:
+def benchmark_prompt(spec: str, *, execution_gate: str | None = None) -> str:
+    gate = ""
+    if execution_gate is not None:
+        normalized_gate = execution_gate.strip()
+        if not normalized_gate:
+            raise ValueError("execution gate must not be empty")
+        gate = f"Capsule execution gate:\n{normalized_gate}\n\n"
     return (
         "Implement the specification below in the current workspace.\n"
         "Keep changes scoped to the requested behavior. Do not access files outside "
-        "the workspace. Do not use network access. Finish only after checking the "
-        "implementation for syntax errors.\n\n"
+        "the workspace. Do not use network access.\n"
+        f"{gate}"
+        "First make the requested implementation changes. Then check the edited "
+        "implementation for syntax errors. A passing check on the unchanged starter "
+        "is not completion.\n\n"
         "--- BEGIN SPECIFICATION ---\n"
         f"{spec.rstrip()}\n"
         "--- END SPECIFICATION ---\n"
