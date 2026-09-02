@@ -250,23 +250,6 @@ without an optional tokenizer package. Do not publish an exact tokenizer claim
 unless the result schema records and credibility-checks the encoding, package
 identity, per-arm counts, and aggregate.
 
-Published `gpt-5.6-terra`, medium-reasoning Capsule v4 run:
-
-- 18/18 complete arm runs and 9/9 jointly successful pairs for both arms;
-- Capsule v4 used 25.98% fewer total model tokens, with a 20.925% to 40.706%
-  fixture-cluster interval for the paired median reduction;
-- output tokens fell 44.03%, tool calls 30.56%, shell commands 42.31%, and wall
-  time 14.83%;
-- classified discovery and read commands fell from 22 each to zero, including
-  all 12 pre-edit discovery and 12 pre-edit read events;
-- median static artifact size increased 119.46% because the Capsule embeds its
-  routed source.
-
-See the [rendered Capsule report](../CAPSULE_BENCHMARK.md) and
-[privacy-redacted result](results/published/gpt-5.6-terra-medium-20260902-context-capsule/capsule-r3.json).
-The aggregate uncached-input reduction was 11.18%, but its fixture interval
-crossed zero; it is not presented as a stable per-fixture claim.
-
 Capsule evidence is published separately from the clean code-stage commit. Use
 a fresh checkout or dedicated worktree with no ignored files, run the benchmark
 at that commit, then generate only the release files above in a descendant

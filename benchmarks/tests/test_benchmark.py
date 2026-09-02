@@ -93,6 +93,10 @@ class BenchmarkCliTest(unittest.TestCase):
         )
         release_command = "python3 -I /dev/stdin"
         self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn(
+            "PYTHONPYCACHEPREFIX: /tmp/semantic-spec-writer-pycache",
+            workflow,
+        )
         self.assertEqual(workflow.count(release_blob), 1)
         self.assertEqual(workflow.count(release_command), 1)
         self.assertLess(
