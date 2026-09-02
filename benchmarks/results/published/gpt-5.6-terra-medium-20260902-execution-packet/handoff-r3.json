@@ -1,0 +1,2492 @@
+{
+  "cases": [
+    "refund-ledger",
+    "tenant-settings",
+    "webhook-dispatch"
+  ],
+  "created_at": "2026-09-02T00:37:08.444381+00:00",
+  "environment": {
+    "codex": "codex-cli 0.149.1",
+    "git_commit": "7eba52a794b7c1c3db04dbb19c0ad052192b255b",
+    "python": "3.12.3"
+  },
+  "fixture_snapshot": {
+    "refund-ledger": {
+      "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+      "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a",
+      "variants": {
+        "markdown": "b2af611f0ebfa966e7b5a5d7ac94389d121e11188836fca5f9a1b09fad6387ea",
+        "packet": "5fede1166d55c99360ab9b0040e8bfbd2a07f2c15ec1791279be65b7e0e4549f",
+        "semantic": "a7da0ea88438d419b765512514d78dc69506a6254f1e07a42764cb0897aea944"
+      },
+      "verification_fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083"
+    },
+    "tenant-settings": {
+      "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+      "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b",
+      "variants": {
+        "markdown": "d467a063ee0f9dc8c9c20f8386ce010e7eefefbe30266387b43aa07c2e2f0b93",
+        "packet": "a7abbc4380c536170957bad9b738b2e23f5cdbf31c0b576da10b4761fc28c230",
+        "semantic": "f30bc8dd026e5fca60dbcd95c31007cbf108388a063902f19e8d3a376dab015d"
+      },
+      "verification_fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438"
+    },
+    "webhook-dispatch": {
+      "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+      "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9",
+      "variants": {
+        "markdown": "ef60eaca5b9979d2802238729410d170053ad8fa5b159629708fddfb33927329",
+        "packet": "75dadb1afc9621c4b2fbd72ebd28259387f197ae2916f9a89cbaba964711f140",
+        "semantic": "a9d4ab524ab7b0ec849cc04ad933ac71d79c7311bb872a2318628d47b335e613"
+      },
+      "verification_fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe"
+    }
+  },
+  "full_corpus": true,
+  "kind": "semantic-execution-packet-comparison",
+  "model": "gpt-5.6-terra",
+  "oracle_exposure": "reduced: hidden tests and hidden expected outputs stay in the grader parent; visible smoke assertions are shared equally across arms",
+  "packet_version": 3,
+  "provider": "codex",
+  "reasoning_effort": "medium",
+  "repetitions": 3,
+  "results": [
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r3",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "c6ac3f7a7861ce907029e43089bfa710062ad72628a17f906303c9c201d8ed07",
+        "spec_sha256": "75dadb1afc9621c4b2fbd72ebd28259387f197ae2916f9a89cbaba964711f140",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,260p' webhooks/handler.py && sed -n '1,160p' solution.py && sed -n '1,240p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/*.py && git diff --check && git diff'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 - <<'PY'\nimport hashlib\nimport hmac\nfrom solution import handle_webhook\n\nsecret, body = 'key', 'hello'\nsignature = 'sha256=' + hmac.new(secret.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()\nassert handle_webhook(secret, body, signature + '\\\\n', {'id': 'a', 'type': 'invoice.paid'}, []) == {'ok': False, 'status': 401, 'error': 'invalid_signature'}\nassert handle_webhook(secret, body, 'bad', {'id': ' ', 'type': 'invoice.paid'}, []) == {'ok': False, 'status': 401, 'error': 'invalid_signature'}\nassert handle_webhook(secret, body, signature, {'id': ' ', 'type': 'invoice.paid'}, []) == {'ok': False, 'status': 400, 'error': 'invalid_event'}\nassert handle_webhook(secret, body, signature, {'id': 'a', 'type': 'other'}, []) == {'ok': False, 'status': 422, 'error': 'unsupported_event', 'type': 'other'}\nsource = [{'event_id': 'a', 'type': 'invoice.paid', 'meta': {'x': 1}}]\nresult = handle_webhook(secret, body, signature, {'id': ' a ', 'type': ' invoice.paid '}, source)\nassert result == {'ok': True, 'status': 200, 'replayed': True, 'delivery': source[0], 'deliveries': source}\nassert result['delivery'] is not source[0] and result['deliveries'] is not source\nresult['delivery']['meta']['x'] = 2\nassert source[0]['meta']['x'] == 1\nnew_result = handle_webhook(secret, body, signature, {'id': 'b', 'type': 'invoice.failed'}, source)\nassert new_result == {'ok': True, 'status': 200, 'replayed': False, 'delivery': {'event_id': 'b', 'type': 'invoice.failed'}, 'deliveries': source + [{'event_id': 'b', 'type': 'invoice.failed'}]}\nassert new_result['deliveries'] is not source\nprint('edge cases: OK')\nPY\npython3 -m py_compile solution.py webhooks/*.py\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 55.426,
+        "event_errors": [],
+        "final_message": "Implemented webhook dispatch behavior across `webhooks/`.\n\nVerified with:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile solution.py webhooks/*.py`\n- Additional signature, validation, duplicate replay, deep-copy, and new-delivery checks.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f8c-5a32-7d12-9aaa-cc02d7104b07",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 67328,
+          "input_tokens": 82798,
+          "output_tokens": 2491,
+          "reasoning_output_tokens": 359,
+          "uncached_input_tokens": 15470
+        }
+      },
+      "repetition": 3,
+      "run_order": 1,
+      "spec": {
+        "bytes": 1670,
+        "characters": 1670,
+        "lines": 27,
+        "words": 152
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-favptlix\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r3",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "2311ea1744ffa449209584e39bd2253d6133444ab65f54ea1ad59e655d3a9129",
+        "spec_sha256": "ef60eaca5b9979d2802238729410d170053ad8fa5b159629708fddfb33927329",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 3,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '\"'!*.pyc'\"' | sed -n '1,200p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,280p' webhooks/handler.py && sed -n '1,260p' test_smoke.py && sed -n '1,200p' webhooks/__init__.py && sed -n '1,240p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'for f in webhooks/*.py solution.py; do echo \"### $f\"; nl -ba \"$f\"; done && find . -maxdepth 2 -type f -not -path '\"'./.git/*' -print\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python -m unittest -v && python -m compileall -q solution.py webhooks && python - <<'PY'\nimport hashlib\nimport hmac\nfrom webhooks.dedup import find_delivery\nfrom webhooks.events import normalize_event\nfrom webhooks.handler import handle_webhook\nfrom webhooks.signature import verify_signature\n\nsecret = 'key'\nbody = 'hello'\nsignature = 'sha256=' + hmac.new(secret.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()\nevent = {'id': ' evt-1 ', 'type': ' invoice.paid ', 'payload': {'items': [1]}}\ndeliveries = [{'event_id': 'old', 'type': 'invoice.failed', 'data': {'a': [1]}}]\nassert verify_signature(secret, body, signature)\nassert not verify_signature(secret, body, signature.upper())\nassert not verify_signature(secret, body, 'sha256=' + 'a' * 63)\nassert not verify_signature(None, body, signature)\nnormalized = normalize_event(event)\nassert normalized == {'id': 'evt-1', 'type': 'invoice.paid', 'payload': {'items': [1]}}\nnormalized['payload']['items'].append(2)\nassert event['payload']['items'] == [1]\nassert find_delivery(deliveries, 'old') == deliveries[0]\nresult = handle_webhook(secret, body, signature, event, deliveries)\nassert result == {'ok': True, 'status': 200, 'replayed': False, 'delivery': {'event_id': 'evt-1', 'type': 'invoice.paid'}, 'deliveries': deliveries + [{'event_id': 'evt-1', 'type': 'invoice.paid'}]}\nassert event['id'] == ' evt-1 ' and deliveries == [{'event_id': 'old', 'type': 'invoice.failed', 'data': {'a': [1]}}]\nreplay = handle_webhook(secret, body, signature, event, result['deliveries'])\nassert replay['replayed'] and replay['delivery'] == {'event_id': 'evt-1', 'type': 'invoice.paid'}\nassert handle_webhook(secret, body, 'bad', event, deliveries) == {'ok': False, 'status': 401, 'error': 'invalid_signature'}\nassert handle_webhook(secret, body, signature, {'id': ' ', 'type': 'invoice.paid'}, deliveries) == {'ok': False, 'status': 400, 'error': 'invalid_event'}\nassert handle_webhook(secret, body, signature, {'id': 'x', 'type': '",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m unittest -v && python3 -m compileall -q solution.py webhooks && python3 - <<'PY'\nimport hashlib\nimport hmac\nfrom webhooks.dedup import find_delivery\nfrom webhooks.events import normalize_event\nfrom webhooks.handler import handle_webhook\nfrom webhooks.signature import verify_signature\n\nsecret = 'key'\nbody = 'hello'\nsignature = 'sha256=' + hmac.new(secret.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()\nevent = {'id': ' evt-1 ', 'type': ' invoice.paid ', 'payload': {'items': [1]}}\ndeliveries = [{'event_id': 'old', 'type': 'invoice.failed', 'data': {'a': [1]}}]\nassert verify_signature(secret, body, signature)\nassert not verify_signature(secret, body, signature.upper())\nassert not verify_signature(secret, body, 'sha256=' + 'a' * 63)\nassert not verify_signature(None, body, signature)\nnormalized = normalize_event(event)\nassert normalized == {'id': 'evt-1', 'type': 'invoice.paid', 'payload': {'items': [1]}}\nnormalized['payload']['items'].append(2)\nassert event['payload']['items'] == [1]\nassert find_delivery(deliveries, 'old') == deliveries[0]\nresult = handle_webhook(secret, body, signature, event, deliveries)\nassert result == {'ok': True, 'status': 200, 'replayed': False, 'delivery': {'event_id': 'evt-1', 'type': 'invoice.paid'}, 'deliveries': deliveries + [{'event_id': 'evt-1', 'type': 'invoice.paid'}]}\nassert event['id'] == ' evt-1 ' and deliveries == [{'event_id': 'old', 'type': 'invoice.failed', 'data': {'a': [1]}}]\nreplay = handle_webhook(secret, body, signature, event, result['deliveries'])\nassert replay['replayed'] and replay['delivery'] == {'event_id': 'evt-1', 'type': 'invoice.paid'}\nassert handle_webhook(secret, body, 'bad', event, deliveries) == {'ok': False, 'status': 401, 'error': 'invalid_signature'}\nassert handle_webhook(secret, body, signature, {'id': ' ', 'type': 'invoice.paid'}, deliveries) == {'ok': False, 'status': 400, 'error': 'invalid_event'}\nassert handle_webhook(secret, body, signature, {'id': 'x', 'type'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 91.792,
+        "event_errors": [],
+        "final_message": "Implemented signed, idempotent webhook dispatch across the `webhooks` package.\n\n- HMAC-SHA256 signature validation with strict format and safe comparison\n- Deep-copy event normalization and validation\n- Supported-event enforcement\n- Deep-copy replay lookup and immutable delivery append\n- Exact specified response payloads\n\nValidated with `python3 -m unittest -v`, additional behavior assertions, and `python3 -m compileall`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f8d-3871-7971-b700-b23d6818e3d8",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 104704,
+          "input_tokens": 118736,
+          "output_tokens": 4271,
+          "reasoning_output_tokens": 1042,
+          "uncached_input_tokens": 14032
+        }
+      },
+      "repetition": 3,
+      "run_order": 2,
+      "spec": {
+        "bytes": 2100,
+        "characters": 2100,
+        "lines": 39,
+        "words": 264
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-k5dyrckw\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r3",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "dc5403478b83828cc0f8e6752ae83e29357893a55eae4d30ac230d0eb2392225",
+        "spec_sha256": "a9d4ab524ab7b0ec849cc04ad933ac71d79c7311bb872a2318628d47b335e613",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g 'solution.py' -g 'webhooks/**' -g 'test_smoke.py' -g 'AGENTS.md' && sed -n '1,240p' solution.py && sed -n '1,240p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,260p' webhooks/handler.py && sed -n '1,300p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py && git diff --check && git diff -- webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py && git diff --check'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 66.952,
+        "event_errors": [],
+        "final_message": "Implemented the webhook verification, normalization, deduplication, and immutable dispatch flow in the four requested modules.\n\nVerified successfully:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile ...`\n- `git diff --check`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f8e-a42a-7f73-b173-f7afc62e4656",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 82432,
+          "input_tokens": 102462,
+          "output_tokens": 2888,
+          "reasoning_output_tokens": 738,
+          "uncached_input_tokens": 20030
+        }
+      },
+      "repetition": 3,
+      "run_order": 3,
+      "spec": {
+        "bytes": 1728,
+        "characters": 1728,
+        "lines": 34,
+        "words": 156
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-slp0vppv\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r1",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "36887fd788d7435c2e25766ab939e906877d5961c6a5676017d2a13f21b0ec8d",
+        "spec_sha256": "d467a063ee0f9dc8c9c20f8386ce010e7eefefbe30266387b43aa07c2e2f0b93",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 3,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*'\"\\\\.pyc' -g '\"'!*.egg-info'\"' | sed -n '1,200p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' settings/layers.py && sed -n '1,240p' settings/coercion.py && sed -n '1,240p' settings/service.py && sed -n '1,240p' settings/__init__.py && sed -n '1,260p' test_smoke.py && sed -n '1,200p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'for file in settings/cache.py settings/audit.py settings/schema.py; do echo \"--- $file\"; sed -n '\"'1,240p' \\\"\"'$file\"; done\npython -m unittest -v'",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m py_compile solution.py settings/*.py && python3 -m unittest -v && python3 - <<'PY'\nfrom settings.coercion import coerce_value\nfrom settings.layers import select_layer\nfrom solution import resolve_setting\n\nassert resolve_setting(' flag ', 'bool', False, {' flag ': None}, {' flag ': True}, {}) == {'name': ' flag ', 'value': None, 'source': 'request'}\nassert resolve_setting('x', 'string', ' default ', {}, {}, {}) == {'name': 'x', 'value': 'default', 'source': 'default'}\nassert resolve_setting('x', 'int', 0, {'x': '-12'}, {}, {}) == {'name': 'x', 'value': -12, 'source': 'request'}\nfor raw, kind, message in [(1.0, 'int', 'invalid int setting'), (True, 'int', 'invalid int setting'), ('yes', 'bool', 'invalid bool setting'), (None, 'float', 'unsupported setting kind')]:\n    try:\n        coerce_value(raw, kind)\n    except ValueError as exc:\n        assert str(exc) == message\n    else:\n        raise AssertionError('expected ValueError')\nsource = {'x': {'items': []}}\nchosen = select_layer('x', None, source, {}, {})\nchosen['raw']['items'].append('changed')\nassert source == {'x': {'items': []}}\nprint('spec checks passed')\nPY\ngit diff --check && git diff -- settings/layers.py settings/coercion.py settings/service.py\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 53.702,
+        "event_errors": [],
+        "final_message": "Implemented layered tenant setting resolution across the existing settings modules.\n\n- Request \u2192 tenant \u2192 global \u2192 default precedence with explicit `None` support and deep-copy selection.\n- Strict `bool`, `int`, and `string` coercion with required error messages.\n- Resolver returns the specified result shape without modifying inputs.\n\nValidated with `python3 -m py_compile`, the existing unittest, focused specification checks, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f8f-af8a-7a31-8389-7a5ab257322b",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 78336,
+          "input_tokens": 94531,
+          "output_tokens": 2136,
+          "reasoning_output_tokens": 453,
+          "uncached_input_tokens": 16195
+        }
+      },
+      "repetition": 1,
+      "run_order": 4,
+      "spec": {
+        "bytes": 1793,
+        "characters": 1793,
+        "lines": 33,
+        "words": 259
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-5zhukl5m\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r1",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "9419399467a75431ca27258d61e4b321bf41278c1071638f69c074a1fa730e58",
+        "spec_sha256": "f30bc8dd026e5fca60dbcd95c31007cbf108388a063902f19e8d3a376dab015d",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' settings/layers.py && sed -n '1,240p' settings/coercion.py && sed -n '1,240p' settings/service.py && sed -n '1,240p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,200p' solution.py && sed -n '1,200p' settings/__init__.py && git status --short && rg \\\"select_layer|coerce_value|resolve_setting\\\" -n .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py settings/layers.py settings/coercion.py settings/service.py && git diff --check && git diff'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 40.186,
+        "event_errors": [],
+        "final_message": "Implemented tenant-setting resolution in the three requested modules.\n\n- Precedence and explicit-null handling added with deep-copied layer values.\n- Strict `bool`, `int`, and `string` coercion with required error messages.\n- Resolver returns exactly `{name, value, source}`.\n\nVerified with:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile solution.py settings/layers.py settings/coercion.py settings/service.py`\n- `git diff --check`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f90-86ae-7972-a86c-bbb99ce5372e",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 68352,
+          "input_tokens": 77983,
+          "output_tokens": 1622,
+          "reasoning_output_tokens": 325,
+          "uncached_input_tokens": 9631
+        }
+      },
+      "repetition": 1,
+      "run_order": 5,
+      "spec": {
+        "bytes": 1289,
+        "characters": 1289,
+        "lines": 34,
+        "words": 140
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-mgc2rcq2\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r1",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "07bee578ce075441d0855ee24eb02b228b111c9aa2d54310d1cb0833d8e6f091",
+        "spec_sha256": "a7abbc4380c536170957bad9b738b2e23f5cdbf31c0b576da10b4761fc28c230",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' | sed -n '1,160p' && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' settings/layers.py && sed -n '1,240p' settings/coercion.py && sed -n '1,240p' settings/service.py && sed -n '1,240p' solution.py && sed -n '1,300p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py settings/*.py && git diff --check && git diff'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 46.708,
+        "event_errors": [],
+        "final_message": "Implemented strict setting resolution in:\n\n- [settings/layers.py](/tmp/execution-packet-bench-3hr09gnk/006-tenant-settings-packet-r1/tenant-settings/settings/layers.py)\n- [settings/coercion.py](/tmp/execution-packet-bench-3hr09gnk/006-tenant-settings-packet-r1/tenant-settings/settings/coercion.py)\n- [settings/service.py](/tmp/execution-packet-bench-3hr09gnk/006-tenant-settings-packet-r1/tenant-settings/settings/service.py)\n\nThis includes precedence with explicit `None` handling, deep-copied selected inputs, strict bool/int/string coercion, required error messages, and exact result shape.\n\nVerified successfully:\n\n`python3 -m unittest -q test_smoke.py`\n\nAlso ran `py_compile` and `git diff --check`; no syntax or whitespace errors.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f91-2920-7d40-8bc7-b8f995996e9f",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 67328,
+          "input_tokens": 77542,
+          "output_tokens": 1972,
+          "reasoning_output_tokens": 623,
+          "uncached_input_tokens": 10214
+        }
+      },
+      "repetition": 1,
+      "run_order": 6,
+      "spec": {
+        "bytes": 1202,
+        "characters": 1202,
+        "lines": 24,
+        "words": 135
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-3p6l6wsx\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.75,
+        "acceptance_passed": 3,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          }
+        ],
+        "pass_rate": 0.875,
+        "passed": 7,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r2",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "c8728811516e6f98ea52d91a340595d5bb0c41ea8a57d6c23cbf1411f680912e",
+        "spec_sha256": "a7da0ea88438d419b765512514d78dc69506a6254f1e07a42764cb0897aea944",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' billing/ledger.py && sed -n '1,240p' billing/events.py && sed -n '1,280p' billing/service.py && sed -n '1,260p' solution.py && sed -n '1,300p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,260p' billing/models.py && sed -n '1,200p' billing/orders.py && sed -n '1,200p' billing/notifications.py && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m py_compile billing/ledger.py billing/events.py billing/service.py solution.py && python3 -m unittest -q test_smoke.py && python3 - <<'PY'\nfrom solution import execute_refund\n\norder = {\\\"id\\\": \\\"o1\\\", \\\"account_id\\\": \\\"a1\\\", \\\"status\\\": \\\"paid\\\", \\\"paid_cents\\\": 500, \\\"refunded_cents\\\": 0, \\\"other\\\": {\\\"kept\\\": True}}\nrequest = {\\\"key\\\": \\\" k \\\", \\\"refund_id\\\": \\\" r1 \\\", \\\"amount_cents\\\": 100, \\\"reason\\\": \\\" x \\\"}\nledger, events = [], []\nresult = execute_refund(order, request, ledger, events)\nassert result == {\n    \\\"ok\\\": True, \\\"replayed\\\": False,\n    \\\"refund\\\": {\\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"key\\\": \\\"k\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100},\n    \\\"order\\\": {\\\"id\\\": \\\"o1\\\", \\\"account_id\\\": \\\"a1\\\", \\\"status\\\": \\\"paid\\\", \\\"paid_cents\\\": 500, \\\"refunded_cents\\\": 100, \\\"other\\\": {\\\"kept\\\": True}},\n    \\\"ledger\\\": [{\\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"key\\\": \\\"k\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100}],\n    \\\"events\\\": [{\\\"type\\\": \\\"refund.created\\\", \\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100, \\\"reason\\\": \\\"x\\\"}],\n}\nassert order[\\\"refunded_cents\\\"] == 0 and request[\\\"key\\\"] == \\\" k \\\" and not ledger and not events\nreplay = execute_refund(order, request, result[\\\"ledger\\\"], result[\\\"events\\\"])\nassert replay[\\\"ok\\\"] and replay[\\\"replayed\\\"] and replay[\\\"ledger\\\"] == result[\\\"ledger\\\"] and replay[\\\"events\\\"] == result[\\\"events\\\"]\nassert execute_refund(order, {**request, \\\"refund_id\\\": \\\"r2\\\"}, result[\\\"ledger\\\"], result[\\\"events\\\"]) == {\\\"ok\\\": False, \\\"error\\\": \\\"idempotency_conflict\\\"}\nprint(\\\"additional contract checks passed\\\")\nPY\ngit diff --check && git diff -- billing/ledger.py billing/events.py billing/service.py\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 55.755,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow in:\n\n- [billing/service.py](/tmp/execution-packet-bench-3hr09gnk/007-refund-ledger-semantic-r2/refund-ledger/billing/service.py)\n- [billing/ledger.py](/tmp/execution-packet-bench-3hr09gnk/007-refund-ledger-semantic-r2/refund-ledger/billing/ledger.py)\n- [billing/events.py](/tmp/execution-packet-bench-3hr09gnk/007-refund-ledger-semantic-r2/refund-ledger/billing/events.py)\n\nIt validates in R1\u2013R6 order, handles scoped idempotent replay/conflicts, and returns deep-copied state without mutating inputs.\n\nVerified with `py_compile`, `python3 -m unittest -q test_smoke.py`, and additional contract checks.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f91-e4f2-7c01-aa6d-67b015249b56",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 70400,
+          "input_tokens": 81187,
+          "output_tokens": 2484,
+          "reasoning_output_tokens": 195,
+          "uncached_input_tokens": 10787
+        }
+      },
+      "repetition": 2,
+      "run_order": 7,
+      "spec": {
+        "bytes": 1994,
+        "characters": 1994,
+        "lines": 42,
+        "words": 165
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-le2x9udp\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r2",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "e294c7afbc15d2749fbdac2e7ecb5c54fbd67eae1e3c7ba2cc75a36596f2041d",
+        "spec_sha256": "5fede1166d55c99360ab9b0040e8bfbd2a07f2c15ec1791279be65b7e0e4549f",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' billing/ledger.py && sed -n '1,260p' billing/events.py && sed -n '1,320p' billing/service.py && sed -n '1,200p' solution.py && sed -n '1,320p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && rg -n \\\"execute_refund|find_by_key|append_entry|build_refund_event\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m py_compile solution.py billing/*.py && python3 -m unittest -q test_smoke.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 55.108,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow in the routed billing modules.\n\n- Added deep-copy-safe ledger lookup and append.\n- Added exact refund event construction.\n- Implemented ordered validation, refund limits, scoped idempotency replay/conflict handling, and immutable success results.\n\nVerification passed:\n\n```text\npython3 -m py_compile solution.py billing/*.py\npython3 -m unittest -q test_smoke.py\n# Ran 1 test \u2014 OK\n```",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f92-c3b9-7a62-95da-bdb909c50a1e",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 71424,
+          "input_tokens": 80741,
+          "output_tokens": 2491,
+          "reasoning_output_tokens": 777,
+          "uncached_input_tokens": 9317
+        }
+      },
+      "repetition": 2,
+      "run_order": 8,
+      "spec": {
+        "bytes": 1861,
+        "characters": 1861,
+        "lines": 29,
+        "words": 178
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-p8g200ex\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": false,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.5,
+        "acceptance_passed": 2,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          },
+          {
+            "name": "build exact refund event",
+            "reason": "expected {'type': 'refund.created', 'account_id': 'a1', 'order_id': 'o1', 'refund_id': 'r1', 'amount_cents': 250, 'reason': 'duplicate charge'}, got {'account_id': 'a1', 'amount_cents': 250, 'order_id': 'o1', 'reason': ' duplicate charge ', 'refund_id': 'r1', 'type': 'refund.created'}"
+          }
+        ],
+        "pass_rate": 0.75,
+        "passed": 6,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r2",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "5b3570f1d271dffe4d8720370813cececb3ad4e503882218d9e4cd6a341b6165",
+        "spec_sha256": "b2af611f0ebfa966e7b5a5d7ac94389d121e11188836fca5f9a1b09fad6387ea",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 3,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '\"'!*.pyc'\"' | sed -n '1,160p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/service.py && sed -n '1,240p' billing/ledger.py && sed -n '1,200p' billing/events.py && sed -n '1,260p' test_smoke.py && sed -n '1,200p' billing/__init__.py && sed -n '1,120p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && sed -n '1,200p' billing/notifications.py && rg -n \\\"execute_refund|find_by_key|append_entry|build_refund\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python -m unittest -v && python -m py_compile solution.py billing/*.py'",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -v && python3 -m py_compile solution.py billing/*.py'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'git diff --check && git diff -- billing/service.py billing/ledger.py billing/events.py && git status --short'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'rg --files __pycache__ billing/__pycache__'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'rm -r ./__pycache__ ./billing/__pycache__ && git status --short && git diff --check'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 86.354,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund ledger workflow and supporting helpers.\n\n- Added immutable ledger lookup/appending and refund event creation.\n- Implemented ordered validation, scoped idempotency replay/conflict handling, and new-refund state updates.\n- Preserved unrelated order fields and input values via deep copies.\n\nChecks passed: `python3 -m unittest -v` and `python3 -m py_compile solution.py billing/*.py`.",
+        "return_code": 0,
+        "stderr_tail": "2026-09-02T00:46:18.715746Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -rf ./__pycache__ ./billing/__pycache__ && git status --short && git diff --check'`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc 'rm -rf ./__pycache__ ./billing/__pycache__ && git status --short && git diff --check'` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05f93-a012-75a3-9420-973829e65d9e",
+        "tool_call_total": 9,
+        "tool_calls": {
+          "command_execution": 8,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 169216,
+          "input_tokens": 196296,
+          "output_tokens": 3646,
+          "reasoning_output_tokens": 1273,
+          "uncached_input_tokens": 27080
+        }
+      },
+      "repetition": 2,
+      "run_order": 9,
+      "spec": {
+        "bytes": 2511,
+        "characters": 2511,
+        "lines": 42,
+        "words": 325
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-ot2knxci\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r3",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "e294c7afbc15d2749fbdac2e7ecb5c54fbd67eae1e3c7ba2cc75a36596f2041d",
+        "spec_sha256": "5fede1166d55c99360ab9b0040e8bfbd2a07f2c15ec1791279be65b7e0e4549f",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' | sort && sed -n '1,240p' billing/ledger.py && sed -n '1,240p' billing/events.py && sed -n '1,320p' billing/service.py && sed -n '1,200p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,260p' billing/models.py && sed -n '1,260p' billing/orders.py && sed -n '1,240p' billing/notifications.py && rg \\\"execute_refund|find_by_key|build_refund_event|append_entry\\\" -n .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py billing/*.py && git diff --check && git diff -- billing/ledger.py billing/events.py billing/service.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 58.523,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow across the requested billing modules.\n\nVerified successfully:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile solution.py billing/*.py`\n- `git diff --check`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f94-f60e-7f92-b0d3-dbcb00dd7b93",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 71424,
+          "input_tokens": 81664,
+          "output_tokens": 2590,
+          "reasoning_output_tokens": 900,
+          "uncached_input_tokens": 10240
+        }
+      },
+      "repetition": 3,
+      "run_order": 10,
+      "spec": {
+        "bytes": 1861,
+        "characters": 1861,
+        "lines": 29,
+        "words": 178
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-ie8dqo_b\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": false,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.5,
+        "acceptance_passed": 2,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          },
+          {
+            "name": "build exact refund event",
+            "reason": "expected {'type': 'refund.created', 'account_id': 'a1', 'order_id': 'o1', 'refund_id': 'r1', 'amount_cents': 250, 'reason': 'duplicate charge'}, got {'account_id': 'a1', 'amount_cents': 250, 'order_id': 'o1', 'reason': ' duplicate charge ', 'refund_id': 'r1', 'type': 'refund.created'}"
+          }
+        ],
+        "pass_rate": 0.75,
+        "passed": 6,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r3",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "5b3570f1d271dffe4d8720370813cececb3ad4e503882218d9e4cd6a341b6165",
+        "spec_sha256": "b2af611f0ebfa966e7b5a5d7ac94389d121e11188836fca5f9a1b09fad6387ea",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 3,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' | sed -n '1,160p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/service.py && sed -n '1,240p' billing/ledger.py && sed -n '1,200p' billing/events.py && sed -n '1,200p' billing/__init__.py && sed -n '1,260p' test_smoke.py && sed -n '1,200p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && sed -n '1,240p' billing/notifications.py && rg -n \\\"refund|copy_value|find_by_key|append_entry|build_refund_event\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python -m compileall -q billing solution.py && python -m unittest -v && python -c '\nfrom billing.events import build_refund_event\nfrom billing.ledger import append_entry, find_by_key\nfrom solution import execute_refund\n\norder = {\\\"id\\\":\\\"o1\\\",\\\"account_id\\\":\\\"a1\\\",\\\"status\\\":\\\"paid\\\",\\\"paid_cents\\\":500,\\\"refunded_cents\\\":0,\\\"extra\\\":{\\\"x\\\":1}}\nrequest = {\\\"key\\\":\\\" key \\\",\\\"refund_id\\\":\\\" r1 \\\",\\\"reason\\\":\\\" reason \\\",\\\"amount_cents\\\":200}\nledger = []\nevents = []\nresult = execute_refund(order, request, ledger, events)\nassert result == {\\\"ok\\\": True, \\\"replayed\\\": False, \\\"refund\\\": {\\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"key\\\":\\\"key\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200}, \\\"order\\\": {\\\"id\\\":\\\"o1\\\",\\\"account_id\\\":\\\"a1\\\",\\\"status\\\":\\\"paid\\\",\\\"paid_cents\\\":500,\\\"refunded_cents\\\":200,\\\"extra\\\":{\\\"x\\\":1}}, \\\"ledger\\\": [{\\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"key\\\":\\\"key\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200}], \\\"events\\\": [{\\\"type\\\":\\\"refund.created\\\", \\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200, \\\"reason\\\":\\\"reason\\\"}]}\nassert order[\\\"refunded_cents\\\"] == 0 and ledger == [] and events == [] and request[\\\"key\\\"] == \\\" key \\\"\nreplay = execute_refund(order, request, result[\\\"ledger\\\"], result[\\\"events\\\"])\nassert replay[\\\"ok\\\"] and replay[\\\"replayed\\\"] and replay[\\\"ledger\\\"] == result[\\\"ledger\\\"]\nassert execute_refund(order, {**request, \\\"amount_cents\\\": 501}, [], []) == {\\\"ok\\\":False, \\\"error\\\":\\\"amount_exceeds_remaining\\\"}\nassert execute_refund(order, {**request, \\\"amount_cents\\\": True}, [], []) == {\\\"ok\\\":False, \\\"error\\\":\\\"invalid_amount\\\"}\nentry = {\\\"account_id\\\":\\\"a1\\\", \\\"key\\\":\\\"k\\\", \\\"nested\\\": {\\\"a\\\":1}}\nentries = [entry]\nfound = find_by_key(entries, \\\"a1\\\", \\\"k\\\")\nfound[\\\"nested\\\"][\\\"a\\\"] = 2\nassert entry[\\\"nested\\\"][\\\"a\\\"] == 1\nappended = append_entry(entries, entry)\nappended[0][\\\"nested\\\"][\\\"a\\\"] = 3\nassert entry[\\\"nested\\\"][\\\"a\\\"] == 1\nassert build_refund_event({\\\"account_id",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m compileall -q billing solution.py && python3 -m unittest -v && python3 -c '\nfrom billing.events import build_refund_event\nfrom billing.ledger import append_entry, find_by_key\nfrom solution import execute_refund\n\norder = {\\\"id\\\":\\\"o1\\\",\\\"account_id\\\":\\\"a1\\\",\\\"status\\\":\\\"paid\\\",\\\"paid_cents\\\":500,\\\"refunded_cents\\\":0,\\\"extra\\\":{\\\"x\\\":1}}\nrequest = {\\\"key\\\":\\\" key \\\",\\\"refund_id\\\":\\\" r1 \\\",\\\"reason\\\":\\\" reason \\\",\\\"amount_cents\\\":200}\nledger = []\nevents = []\nresult = execute_refund(order, request, ledger, events)\nassert result == {\\\"ok\\\": True, \\\"replayed\\\": False, \\\"refund\\\": {\\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"key\\\":\\\"key\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200}, \\\"order\\\": {\\\"id\\\":\\\"o1\\\",\\\"account_id\\\":\\\"a1\\\",\\\"status\\\":\\\"paid\\\",\\\"paid_cents\\\":500,\\\"refunded_cents\\\":200,\\\"extra\\\":{\\\"x\\\":1}}, \\\"ledger\\\": [{\\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"key\\\":\\\"key\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200}], \\\"events\\\": [{\\\"type\\\":\\\"refund.created\\\", \\\"account_id\\\":\\\"a1\\\", \\\"order_id\\\":\\\"o1\\\", \\\"refund_id\\\":\\\"r1\\\", \\\"amount_cents\\\":200, \\\"reason\\\":\\\"reason\\\"}]}\nassert order[\\\"refunded_cents\\\"] == 0 and ledger == [] and events == [] and request[\\\"key\\\"] == \\\" key \\\"\nreplay = execute_refund(order, request, result[\\\"ledger\\\"], result[\\\"events\\\"])\nassert replay[\\\"ok\\\"] and replay[\\\"replayed\\\"] and replay[\\\"ledger\\\"] == result[\\\"ledger\\\"]\nassert execute_refund(order, {**request, \\\"amount_cents\\\": 501}, [], []) == {\\\"ok\\\":False, \\\"error\\\":\\\"amount_exceeds_remaining\\\"}\nassert execute_refund(order, {**request, \\\"amount_cents\\\": True}, [], []) == {\\\"ok\\\":False, \\\"error\\\":\\\"invalid_amount\\\"}\nentry = {\\\"account_id\\\":\\\"a1\\\", \\\"key\\\":\\\"k\\\", \\\"nested\\\": {\\\"a\\\":1}}\nentries = [entry]\nfound = find_by_key(entries, \\\"a1\\\", \\\"k\\\")\nfound[\\\"nested\\\"][\\\"a\\\"] = 2\nassert entry[\\\"nested\\\"][\\\"a\\\"] == 1\nappended = append_entry(entries, entry)\nappended[0][\\\"nested\\\"][\\\"a\\\"] = 3\nassert entry[\\\"nested\\\"][\\\"a\\\"] == 1\nassert build_refund_event({\\\"account",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'git diff --check && git diff -- billing/service.py billing/ledger.py billing/events.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 83.799,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow and helpers in:\n\n- [billing/service.py](/tmp/execution-packet-bench-3hr09gnk/011-refund-ledger-markdown-r3/refund-ledger/billing/service.py)\n- [billing/ledger.py](/tmp/execution-packet-bench-3hr09gnk/011-refund-ledger-markdown-r3/refund-ledger/billing/ledger.py)\n- [billing/events.py](/tmp/execution-packet-bench-3hr09gnk/011-refund-ledger-markdown-r3/refund-ledger/billing/events.py)\n\nIt validates in the specified order, preserves all inputs via deep copies, handles scoped replay/conflicts, and emits the required ledger entry/event shapes.\n\nVerified with `python3 -m compileall`, the existing unittest suite, and targeted behavioral assertions.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f95-dff0-7900-b515-3ce8d63951ef",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 6,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 113664,
+          "input_tokens": 138171,
+          "output_tokens": 3895,
+          "reasoning_output_tokens": 491,
+          "uncached_input_tokens": 24507
+        }
+      },
+      "repetition": 3,
+      "run_order": 11,
+      "spec": {
+        "bytes": 2511,
+        "characters": 2511,
+        "lines": 42,
+        "words": 325
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-l5fjepp6\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": false,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.5,
+        "acceptance_passed": 2,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          },
+          {
+            "name": "build exact refund event",
+            "reason": "expected {'type': 'refund.created', 'account_id': 'a1', 'order_id': 'o1', 'refund_id': 'r1', 'amount_cents': 250, 'reason': 'duplicate charge'}, got {'account_id': 'a1', 'amount_cents': 250, 'order_id': 'o1', 'reason': ' duplicate charge ', 'refund_id': 'r1', 'type': 'refund.created'}"
+          }
+        ],
+        "pass_rate": 0.75,
+        "passed": 6,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r3",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "c8728811516e6f98ea52d91a340595d5bb0c41ea8a57d6c23cbf1411f680912e",
+        "spec_sha256": "a7da0ea88438d419b765512514d78dc69506a6254f1e07a42764cb0897aea944",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' billing/ledger.py && sed -n '1,240p' billing/events.py && sed -n '1,300p' billing/service.py && sed -n '1,200p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && sed -n '1,160p' billing/__init__.py && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py billing/ledger.py billing/events.py billing/service.py && git diff --check && git diff -- billing/ledger.py billing/events.py billing/service.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 52.387,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow in:\n\n- [billing/service.py](/tmp/execution-packet-bench-3hr09gnk/012-refund-ledger-semantic-r3/refund-ledger/billing/service.py)\n- [billing/ledger.py](/tmp/execution-packet-bench-3hr09gnk/012-refund-ledger-semantic-r3/refund-ledger/billing/ledger.py)\n- [billing/events.py](/tmp/execution-packet-bench-3hr09gnk/012-refund-ledger-semantic-r3/refund-ledger/billing/events.py)\n\nIt validates in the specified order, scopes idempotency by account/key, preserves caller inputs via deep copies, and returns the exact success/error shapes.\n\nVerified successfully:\n\n```text\npython3 -m unittest -q test_smoke.py\npython3 -m py_compile solution.py billing/ledger.py billing/events.py billing/service.py\n```",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f97-2c60-7cc0-8c37-94ef15f3a471",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 64256,
+          "input_tokens": 80720,
+          "output_tokens": 2188,
+          "reasoning_output_tokens": 338,
+          "uncached_input_tokens": 16464
+        }
+      },
+      "repetition": 3,
+      "run_order": 12,
+      "spec": {
+        "bytes": 1994,
+        "characters": 1994,
+        "lines": 42,
+        "words": 165
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-tia9r68j\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r3",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "36887fd788d7435c2e25766ab939e906877d5961c6a5676017d2a13f21b0ec8d",
+        "spec_sha256": "d467a063ee0f9dc8c9c20f8386ce010e7eefefbe30266387b43aa07c2e2f0b93",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 3,
+          "verify": 3
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' | sed -n '1,200p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' settings/layers.py && sed -n '1,240p' settings/coercion.py && sed -n '1,240p' settings/service.py && sed -n '1,200p' settings/__init__.py && sed -n '1,260p' test_smoke.py && sed -n '1,160p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'for f in settings/*.py; do echo \"== $f\"; nl -ba \"$f\"; done\npython -m unittest -v'",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m py_compile solution.py settings/*.py && python3 -m unittest -v && python3 - <<'PY'\nfrom settings.coercion import coerce_value\nfrom settings.layers import select_layer\nfrom solution import resolve_setting\n\nassert resolve_setting(' x ', 'string', ' default ', {}, {}, {}) == {\n    'name': ' x ', 'value': 'default', 'source': 'default'\n}\nassert resolve_setting('x', 'bool', True, {'x': None}, {'x': 'false'}, {}) == {\n    'name': 'x', 'value': None, 'source': 'request'\n}\nassert coerce_value(' -12 ', 'int') == -12\nfor raw, kind in [(1.0, 'int'), (True, 'int'), ('+1', 'int'), ('yes', 'bool'), (3, 'string')]:\n    try:\n        coerce_value(raw, kind)\n    except ValueError as error:\n        assert str(error) == f'invalid {kind} setting'\n    else:\n        raise AssertionError((raw, kind))\ntry:\n    coerce_value(None, 'decimal')\nexcept ValueError as error:\n    assert str(error) == 'unsupported setting kind'\nelse:\n    raise AssertionError('unsupported kind was accepted')\n\nrequest = {'x': {'items': []}}\nselected = select_layer('x', None, request, {}, {})\nselected['raw']['items'].append(1)\nassert request == {'x': {'items': []}}\nprint('additional specification checks passed')\nPY\ngit diff --check && git diff\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m py_compile solution.py settings/*.py && python3 -m unittest -v && python3 - <<'PY'\nfrom settings.coercion import coerce_value\n\nfor kind in ('decimal', [], {'kind': 'int'}):\n    try:\n        coerce_value(None, kind)\n    except ValueError as error:\n        assert str(error) == 'unsupported setting kind'\n    else:\n        raise AssertionError(kind)\nprint('unsupported-kind checks passed')\nPY\ngit diff --check\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 71.115,
+        "event_errors": [],
+        "final_message": "Implemented layered setting resolution in `settings/`.\n\n- Precedence and explicit `None` handling in `layers.py`\n- Strict bool/int/string coercion and required error messages in `coercion.py`\n- Resolver integration in `service.py`\n- Deep-copy protection for selected layer values\n\nVerified with `python3 -m py_compile`, the repository smoke test, targeted edge checks, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f97-fe0a-7580-9fb1-007edc1788eb",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 113664,
+          "input_tokens": 133235,
+          "output_tokens": 2845,
+          "reasoning_output_tokens": 656,
+          "uncached_input_tokens": 19571
+        }
+      },
+      "repetition": 3,
+      "run_order": 13,
+      "spec": {
+        "bytes": 1793,
+        "characters": 1793,
+        "lines": 33,
+        "words": 259
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-ebmdbfys\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r3",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "9419399467a75431ca27258d61e4b321bf41278c1071638f69c074a1fa730e58",
+        "spec_sha256": "f30bc8dd026e5fca60dbcd95c31007cbf108388a063902f19e8d3a376dab015d",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' settings/layers.py && sed -n '1,260p' settings/coercion.py && sed -n '1,260p' settings/service.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,200p' solution.py && sed -n '1,160p' settings/__init__.py && git diff -- settings/layers.py settings/coercion.py settings/service.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile settings/layers.py settings/coercion.py settings/service.py solution.py'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'git diff --check && git diff -- settings/layers.py settings/coercion.py settings/service.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 44.719,
+        "event_errors": [],
+        "final_message": "Implemented the tenant setting resolver in the requested files.\n\n- Strict request \u2192 tenant \u2192 global \u2192 default precedence with explicit-null support.\n- Deep-copied selected raw values.\n- Added strict `bool`, `int`, and `string` coercion and specified errors.\n- Returns exactly `{name, value, source}`.\n\nVerified with:\n\n```text\npython3 -m unittest -q test_smoke.py\nOK\n```\n\nAlso passed `py_compile` syntax checks and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f99-1964-7230-b4d7-7d8725ac4fe4",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 79360,
+          "input_tokens": 93969,
+          "output_tokens": 1595,
+          "reasoning_output_tokens": 224,
+          "uncached_input_tokens": 14609
+        }
+      },
+      "repetition": 3,
+      "run_order": 14,
+      "spec": {
+        "bytes": 1289,
+        "characters": 1289,
+        "lines": 34,
+        "words": 140
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-fcs5vd97\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r3",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "07bee578ce075441d0855ee24eb02b228b111c9aa2d54310d1cb0833d8e6f091",
+        "spec_sha256": "a7abbc4380c536170957bad9b738b2e23f5cdbf31c0b576da10b4761fc28c230",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' | sed -n '1,160p' && sed -n '1,240p' settings/layers.py && sed -n '1,240p' settings/coercion.py && sed -n '1,240p' settings/service.py && sed -n '1,260p' solution.py && sed -n '1,320p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m py_compile solution.py settings/layers.py settings/coercion.py settings/service.py && python3 -m unittest -q test_smoke.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 37.496,
+        "event_errors": [],
+        "final_message": "Implemented strict setting resolution and coercion.\n\n- Precedence is request \u2192 tenant \u2192 global \u2192 default; explicit `None` stops fallback.\n- Selected values/defaults are deep-copied.\n- Coercion now strictly validates bool, int, and string kinds with required errors.\n- `resolve_setting` returns the exact requested result shape.\n\nVerified with syntax compilation and `python3 -m unittest -q test_smoke.py` (passes).",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f99-cd00-7371-a231-9d5eb4c4cc80",
+        "tool_call_total": 3,
+        "tool_calls": {
+          "command_execution": 2,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 53248,
+          "input_tokens": 61583,
+          "output_tokens": 1399,
+          "reasoning_output_tokens": 256,
+          "uncached_input_tokens": 8335
+        }
+      },
+      "repetition": 3,
+      "run_order": 15,
+      "spec": {
+        "bytes": 1202,
+        "characters": 1202,
+        "lines": 24,
+        "words": 135
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-j6gnwcuz\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r2",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "9419399467a75431ca27258d61e4b321bf41278c1071638f69c074a1fa730e58",
+        "spec_sha256": "f30bc8dd026e5fca60dbcd95c31007cbf108388a063902f19e8d3a376dab015d",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' settings/layers.py && sed -n '1,260p' settings/coercion.py && sed -n '1,260p' settings/service.py && sed -n '1,260p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py settings/layers.py settings/coercion.py settings/service.py && python3 - <<'PY'\nfrom settings.coercion import coerce_value\nfrom settings.layers import select_layer\nfrom solution import resolve_setting\n\nassert select_layer('x', {'v': []}, {'x': None}, {'x': 2}, {'x': 3}) == {'source': 'request', 'raw': None}\nraw = {'nested': []}\nselected = select_layer('x', raw, {}, {}, {})\nassert selected['raw'] == raw and selected['raw'] is not raw\nassert coerce_value(None, 'int') is None\nassert coerce_value(' TRUE ', 'bool') is True\nassert coerce_value(' -002 ', 'int') == -2\nassert coerce_value('  ', 'string') == ''\nfor args, message in [\n    ((None, 'other'), 'unsupported setting kind'),\n    ((True, 'int'), 'invalid int setting'),\n    ((1.0, 'int'), 'invalid int setting'),\n    ((1, 'string'), 'invalid string setting'),\n]:\n    try:\n        coerce_value(*args)\n    except ValueError as error:\n        assert str(error) == message\n    else:\n        raise AssertionError('expected ValueError')\nassert resolve_setting('x', 'int', 0, {'x': None}, {'x': 2}, {'x': 3}) == {'name': 'x', 'value': None, 'source': 'request'}\nPY\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 41.074,
+        "event_errors": [],
+        "final_message": "Implemented tenant settings resolution in the requested modules.\n\n- Strict precedence with explicit `None` handling and deep-copying in `settings/layers.py`\n- Typed coercion and exact validation errors in `settings/coercion.py`\n- Required `{name, value, source}` result in `settings/service.py`\n\nVerified with:\n\n`python3 -m unittest -q test_smoke.py`\n\nand Python compilation checks.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f9a-64f9-7980-8afb-dcecd07d7ff7",
+        "tool_call_total": 3,
+        "tool_calls": {
+          "command_execution": 2,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 48128,
+          "input_tokens": 61970,
+          "output_tokens": 1721,
+          "reasoning_output_tokens": 232,
+          "uncached_input_tokens": 13842
+        }
+      },
+      "repetition": 2,
+      "run_order": 16,
+      "spec": {
+        "bytes": 1289,
+        "characters": 1289,
+        "lines": 34,
+        "words": 140
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-0j19r3v1\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r2",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "07bee578ce075441d0855ee24eb02b228b111c9aa2d54310d1cb0833d8e6f091",
+        "spec_sha256": "a7abbc4380c536170957bad9b738b2e23f5cdbf31c0b576da10b4761fc28c230",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' settings/layers.py && sed -n '1,260p' settings/coercion.py && sed -n '1,260p' settings/service.py && sed -n '1,220p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py settings/layers.py settings/coercion.py settings/service.py && python3 - <<'PY'\nfrom solution import resolve_setting\nfrom settings.coercion import coerce_value\n\nrequest = {\\\"x\\\": None}\ntenant = {\\\"x\\\": \\\"12\\\"}\nresult = resolve_setting(\\\"x\\\", \\\"int\\\", \\\"3\\\", request, tenant, {})\nassert result == {\\\"name\\\": \\\"x\\\", \\\"value\\\": None, \\\"source\\\": \\\"request\\\"}\n\nmutable = {\\\"items\\\": [1]}\nfrom settings.layers import select_layer\nselected = select_layer(\\\"x\\\", mutable, {}, {}, {})\nselected[\\\"raw\\\"][\\\"items\\\"].append(2)\nassert mutable == {\\\"items\\\": [1]}\n\nassert coerce_value(\\\" True \\\", \\\"bool\\\") is True\nassert coerce_value(\\\" -07 \\\", \\\"int\\\") == -7\nassert coerce_value(\\\"  \\\", \\\"string\\\") == \\\"\\\"\nfor raw, kind, message in [\n    (None, \\\"float\\\", \\\"unsupported setting kind\\\"),\n    (1.0, \\\"int\\\", \\\"invalid int setting\\\"),\n    (\\\"1.0\\\", \\\"int\\\", \\\"invalid int setting\\\"),\n    (1, \\\"bool\\\", \\\"invalid bool setting\\\"),\n    (False, \\\"int\\\", \\\"invalid int setting\\\"),\n]:\n    try:\n        coerce_value(raw, kind)\n    except ValueError as error:\n        assert str(error) == message\n    else:\n        raise AssertionError((raw, kind))\nPY\ngit diff --check && git diff -- settings/layers.py settings/coercion.py settings/service.py\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 42.245,
+        "event_errors": [],
+        "final_message": "Implemented the requested behavior in:\n\n- [settings/layers.py](/tmp/execution-packet-bench-3hr09gnk/017-tenant-settings-packet-r2/tenant-settings/settings/layers.py)\n- [settings/coercion.py](/tmp/execution-packet-bench-3hr09gnk/017-tenant-settings-packet-r2/tenant-settings/settings/coercion.py)\n- [settings/service.py](/tmp/execution-packet-bench-3hr09gnk/017-tenant-settings-packet-r2/tenant-settings/settings/service.py)\n\nVerified with:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile ...`\n- Focused checks for null precedence, deep-copy isolation, strict coercion, and exact errors.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f9b-0aa6-7312-b576-dcaf5fefa93f",
+        "tool_call_total": 3,
+        "tool_calls": {
+          "command_execution": 2,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 53248,
+          "input_tokens": 62771,
+          "output_tokens": 1871,
+          "reasoning_output_tokens": 218,
+          "uncached_input_tokens": 9523
+        }
+      },
+      "repetition": 2,
+      "run_order": 17,
+      "spec": {
+        "bytes": 1202,
+        "characters": 1202,
+        "lines": 24,
+        "words": 135
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-ganu9h5w\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 3,
+        "acceptance_total": 3,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "tenant-settings:r2",
+      "provenance": {
+        "fixture_sha256": "fcb7b56d89f271e5df38a53d4e31bb421ab5951b9ba56a4fd821e442f5a4d5c0",
+        "prompt_sha256": "36887fd788d7435c2e25766ab939e906877d5961c6a5676017d2a13f21b0ec8d",
+        "spec_sha256": "d467a063ee0f9dc8c9c20f8386ce010e7eefefbe30266387b43aa07c2e2f0b93",
+        "starter_sha256": "b583cb9282c61657902f2c7bb79913d8aec2f3af5703e690dc9cbb66be089a6b"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 2,
+          "verify": 4
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '*.py' -g 'pyproject.toml' -g 'pytest.ini' -g 'tox.ini' -g 'setup.cfg' -g 'requirements*.txt'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' settings/layers.py && sed -n '1,260p' settings/coercion.py && sed -n '1,260p' settings/service.py && sed -n '1,260p' settings/__init__.py && sed -n '1,260p' test_smoke.py && sed -n '1,260p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'for f in settings/layers.py settings/coercion.py settings/service.py settings/__init__.py settings/schema.py settings/cache.py settings/audit.py; do echo \"### $f\"; nl -ba \"$f\"; done; git status --short'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python -m unittest -v && python -m compileall -q settings solution.py && python - <<'PY'\nfrom settings import coerce_value, resolve_setting, select_layer\n\nrequest = {\\\"setting\\\": None, \\\"nested\\\": {\\\"items\\\": [1]}}\ntenant = {\\\"setting\\\": \\\"9\\\"}\nglobal = {\\\"setting\\\": \\\"8\\\"}\nassert resolve_setting(\\\"setting\\\", \\\"int\\\", 7, request, tenant, global) == {\n    \\\"name\\\": \\\"setting\\\", \\\"value\\\": None, \\\"source\\\": \\\"request\\\"\n}\nselected = select_layer(\\\"nested\\\", None, request, {}, {})\nselected[\\\"raw\\\"][\\\"items\\\"].append(2)\nassert request[\\\"nested\\\"] == {\\\"items\\\": [1]}\nassert coerce_value(\\\" FALSE \\\", \\\"bool\\\") is False\nassert coerce_value(\\\" -12 \\\", \\\"int\\\") == -12\nassert coerce_value(\\\"  \\\", \\\"string\\\") == \\\"\\\"\nfor raw, kind, message in ((1.0, \\\"int\\\", \\\"invalid int setting\\\"), (None, \\\"other\\\", \\\"unsupported setting kind\\\")):\n    try:\n        coerce_value(raw, kind)\n    except ValueError as error:\n        assert str(error) == message\n    else:\n        raise AssertionError(\\\"expected ValueError\\\")\nPY\ngit diff --check && git diff -- settings\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m unittest -v && python3 -m compileall -q settings solution.py && python3 - <<'PY'\nfrom settings import coerce_value, resolve_setting, select_layer\n\nrequest = {\\\"setting\\\": None, \\\"nested\\\": {\\\"items\\\": [1]}}\ntenant = {\\\"setting\\\": \\\"9\\\"}\nglobal = {\\\"setting\\\": \\\"8\\\"}\nassert resolve_setting(\\\"setting\\\", \\\"int\\\", 7, request, tenant, global) == {\n    \\\"name\\\": \\\"setting\\\", \\\"value\\\": None, \\\"source\\\": \\\"request\\\"\n}\nselected = select_layer(\\\"nested\\\", None, request, {}, {})\nselected[\\\"raw\\\"][\\\"items\\\"].append(2)\nassert request[\\\"nested\\\"] == {\\\"items\\\": [1]}\nassert coerce_value(\\\" FALSE \\\", \\\"bool\\\") is False\nassert coerce_value(\\\" -12 \\\", \\\"int\\\") == -12\nassert coerce_value(\\\"  \\\", \\\"string\\\") == \\\"\\\"\nfor raw, kind, message in ((1.0, \\\"int\\\", \\\"invalid int setting\\\"), (None, \\\"other\\\", \\\"unsupported setting kind\\\")):\n    try:\n        coerce_value(raw, kind)\n    except ValueError as error:\n        assert str(error) == message\n    else:\n        raise AssertionError(\\\"expected ValueError\\\")\nPY\ngit diff --check && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v\npython3 - <<'PY'\nfrom pathlib import Path\nfor path in [Path(\\\"solution.py\\\"), *Path(\\\"settings\\\").glob(\\\"*.py\\\")]:\n    compile(path.read_text(), str(path), \\\"exec\\\")\nPY\nPYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'\nfrom settings import coerce_value, resolve_setting, select_layer\n\nrequest = {\\\"setting\\\": None, \\\"nested\\\": {\\\"items\\\": [1]}}\ntenant = {\\\"setting\\\": \\\"9\\\"}\nglobal_values = {\\\"setting\\\": \\\"8\\\"}\nassert resolve_setting(\\\"setting\\\", \\\"int\\\", 7, request, tenant, global_values) == {\n    \\\"name\\\": \\\"setting\\\", \\\"value\\\": None, \\\"source\\\": \\\"request\\\"\n}\nselected = select_layer(\\\"nested\\\", None, request, {}, {})\nselected[\\\"raw\\\"][\\\"items\\\"].append(2)\nassert request[\\\"nested\\\"] == {\\\"items\\\": [1]}\nassert coerce_value(\\\" FALSE \\\", \\\"bool\\\") is False\nassert coerce_value(\\\" -12 \\\", \\\"int\\\") == -12\nassert coerce_value(\\\"  \\\", \\\"string\\\") == \\\"\\\"\nfor raw, kind, message in ((1.0, \\\"int\\\", \\\"invalid int setting\\\"), (None, \\\"other\\\", \\\"unsupported setting kind\\\")):\n    try:\n        coerce_value(raw, kind)\n    except ValueError as error:\n        assert str(error) == message\n    else:\n        raise AssertionError(\\\"expected ValueError\\\")\nPY\ngit diff --check && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'rg --files __pycache__ settings/__pycache__ 2>/dev/null || true'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'unlink ./__pycache__/solution.cpython-312.pyc\nunlink ./__pycache__/test_smoke.cpython-312.pyc\nunlink ./settings/__pycache__/schema.cpython-312.pyc\nunlink ./settings/__pycache__/coercion.cpython-312.pyc\nunlink ./settings/__pycache__/layers.cpython-312.pyc\nunlink ./settings/__pycache__/cache.cpython-312.pyc\nunlink ./settings/__pycache__/service.cpython-312.pyc\nunlink ./settings/__pycache__/audit.cpython-312.pyc\nunlink ./settings/__pycache__/__init__.cpython-312.pyc\nrmdir ./__pycache__ ./settings/__pycache__\ngit status --short'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 94.986,
+        "event_errors": [],
+        "final_message": "Implemented layered tenant setting resolution.\n\n- Added request \u2192 tenant \u2192 global \u2192 default selection with deep-copied raw values.\n- Added strict `bool`, `int`, and `string` coercion and required error messages.\n- Added `resolve_setting` result shaping and public exports.\n\nVerified with `python3 -m unittest -v`, syntax compilation of all package files, edge-case assertions, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "r(error) == message\n    else:\n        raise AssertionError(\\\"expected ValueError\\\")\nPY\ngit diff --check && git status --short\"`: CreateProcess { message: \"Rejected(\\\"`/bin/bash -lc \\\\\\\"rm -rf ./__pycache__ ./settings/__pycache__\\\\nPYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v\\\\npython3 - <<'PY'\\\\nfrom pathlib import Path\\\\nfor path in [Path(\\\\\\\\\\\\\\\"solution.py\\\\\\\\\\\\\\\"), *Path(\\\\\\\\\\\\\\\"settings\\\\\\\\\\\\\\\").glob(\\\\\\\\\\\\\\\"*.py\\\\\\\\\\\\\\\")]:\\\\n    compile(path.read_text(), str(path), \\\\\\\\\\\\\\\"exec\\\\\\\\\\\\\\\")\\\\nPY\\\\npython3 - <<'PY'\\\\nfrom settings import coerce_value, resolve_setting, select_layer\\\\n\\\\nrequest = {\\\\\\\\\\\\\\\"setting\\\\\\\\\\\\\\\": None, \\\\\\\\\\\\\\\"nested\\\\\\\\\\\\\\\": {\\\\\\\\\\\\\\\"items\\\\\\\\\\\\\\\": [1]}}\\\\ntenant = {\\\\\\\\\\\\\\\"setting\\\\\\\\\\\\\\\": \\\\\\\\\\\\\\\"9\\\\\\\\\\\\\\\"}\\\\nglobal_values = {\\\\\\\\\\\\\\\"setting\\\\\\\\\\\\\\\": \\\\\\\\\\\\\\\"8\\\\\\\\\\\\\\\"}\\\\nassert resolve_setting(\\\\\\\\\\\\\\\"setting\\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"int\\\\\\\\\\\\\\\", 7, request, tenant, global_values) == {\\\\n    \\\\\\\\\\\\\\\"name\\\\\\\\\\\\\\\": \\\\\\\\\\\\\\\"setting\\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"value\\\\\\\\\\\\\\\": None, \\\\\\\\\\\\\\\"source\\\\\\\\\\\\\\\": \\\\\\\\\\\\\\\"request\\\\\\\\\\\\\\\"\\\\n}\\\\nselected = select_layer(\\\\\\\\\\\\\\\"nested\\\\\\\\\\\\\\\", None, request, {}, {})\\\\nselected[\\\\\\\\\\\\\\\"raw\\\\\\\\\\\\\\\"][\\\\\\\\\\\\\\\"items\\\\\\\\\\\\\\\"].append(2)\\\\nassert request[\\\\\\\\\\\\\\\"nested\\\\\\\\\\\\\\\"] == {\\\\\\\\\\\\\\\"items\\\\\\\\\\\\\\\": [1]}\\\\nassert coerce_value(\\\\\\\\\\\\\\\" FALSE \\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"bool\\\\\\\\\\\\\\\") is False\\\\nassert coerce_value(\\\\\\\\\\\\\\\" -12 \\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"int\\\\\\\\\\\\\\\") == -12\\\\nassert coerce_value(\\\\\\\\\\\\\\\"  \\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"string\\\\\\\\\\\\\\\") == \\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\"\\\\nfor raw, kind, message in ((1.0, \\\\\\\\\\\\\\\"int\\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"invalid int setting\\\\\\\\\\\\\\\"), (None, \\\\\\\\\\\\\\\"other\\\\\\\\\\\\\\\", \\\\\\\\\\\\\\\"unsupported setting kind\\\\\\\\\\\\\\\")):\\\\n    try:\\\\n        coerce_value(raw, kind)\\\\n    except ValueError as error:\\\\n        assert str(error) == message\\\\n    else:\\\\n        raise AssertionError(\\\\\\\\\\\\\\\"expected ValueError\\\\\\\\\\\\\\\")\\\\nPY\\\\ngit diff --check && git status --short\\\\\\\"` rejected: rm -f style commands are not permitted. Use a safer approach\\\")\" }\n",
+        "thread_id": "01a05f9b-b513-75d2-8f33-bdfcd6e7af6e",
+        "tool_call_total": 9,
+        "tool_calls": {
+          "command_execution": 8,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 181504,
+          "input_tokens": 199279,
+          "output_tokens": 4411,
+          "reasoning_output_tokens": 919,
+          "uncached_input_tokens": 17775
+        }
+      },
+      "repetition": 2,
+      "run_order": 18,
+      "spec": {
+        "bytes": 1793,
+        "characters": 1793,
+        "lines": 33,
+        "words": 259
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "62792bc78f5a492087eb7a49a3af51c53255306ef08f57440eba956fef308438",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-4wwas39v\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r1",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "c6ac3f7a7861ce907029e43089bfa710062ad72628a17f906303c9c201d8ed07",
+        "spec_sha256": "75dadb1afc9621c4b2fbd72ebd28259387f197ae2916f9a89cbaba964711f140",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,300p' webhooks/handler.py && sed -n '1,200p' solution.py && sed -n '1,320p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/*.py'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'git diff --check && git diff -- webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 52.42,
+        "event_errors": [],
+        "final_message": "Implemented webhook dispatch behavior in the requested modules.\n\nVerified:\n\n- `python3 -m unittest -q test_smoke.py` \u2014 passes\n- `python3 -m py_compile solution.py webhooks/*.py` \u2014 passes\n- `git diff --check` \u2014 clean",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f9d-2dce-71d0-8c9a-97b9a65c4503",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 71424,
+          "input_tokens": 81558,
+          "output_tokens": 2174,
+          "reasoning_output_tokens": 519,
+          "uncached_input_tokens": 10134
+        }
+      },
+      "repetition": 1,
+      "run_order": 19,
+      "spec": {
+        "bytes": 1670,
+        "characters": 1670,
+        "lines": 27,
+        "words": 152
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-8y7rt136\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r1",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "2311ea1744ffa449209584e39bd2253d6133444ab65f54ea1ad59e655d3a9129",
+        "spec_sha256": "ef60eaca5b9979d2802238729410d170053ad8fa5b159629708fddfb33927329",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '\"'!*.pyc'\"' && rg -n \\\"handle_webhook|verify_signature|normalize_event|find_delivery|webhook\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,200p' webhooks/signature.py && sed -n '1,200p' webhooks/events.py && sed -n '1,200p' webhooks/dedup.py && sed -n '1,240p' webhooks/handler.py && sed -n '1,200p' webhooks/__init__.py && sed -n '1,240p' test_smoke.py && sed -n '1,240p' solution.py && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python -m py_compile solution.py webhooks/*.py && python -m unittest -v && python - <<'PY'\nimport hashlib\nimport hmac\nfrom copy import deepcopy\n\nfrom webhooks.dedup import find_delivery\nfrom webhooks.events import normalize_event\nfrom webhooks.handler import handle_webhook\nfrom webhooks.signature import verify_signature\n\nsecret = \\\"secret\\\"\nbody = \\\"body\\\"\nsignature = \\\"sha256=\\\" + hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()\n\nassert verify_signature(secret, body, signature)\nassert not verify_signature(secret, body, signature.upper())\nassert not verify_signature(secret, body, \\\"sha256=\\\" + \\\"A\\\" * 64)\nassert not verify_signature(secret, body, None)\n\nsource = {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\" invoice.paid \\\", \\\"nested\\\": {\\\"value\\\": []}}\nnormalized = normalize_event(source)\nnormalized[\\\"nested\\\"][\\\"value\\\"].append(1)\nassert source == {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\" invoice.paid \\\", \\\"nested\\\": {\\\"value\\\": []}}\n\noriginal = [{\\\"event_id\\\": \\\"id\\\", \\\"type\\\": \\\"invoice.failed\\\", \\\"meta\\\": {\\\"x\\\": 1}}]\nfound = find_delivery(original, \\\"id\\\")\nfound[\\\"meta\\\"][\\\"x\\\"] = 2\nassert original[0][\\\"meta\\\"][\\\"x\\\"] == 1\nsnapshot = deepcopy(original)\nreplay = handle_webhook(secret, body, signature, {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\"invoice.paid\\\"}, original)\nassert replay == {\\\"ok\\\": True, \\\"status\\\": 200, \\\"replayed\\\": True, \\\"delivery\\\": snapshot[0], \\\"deliveries\\\": snapshot}\nassert original == snapshot\nassert handle_webhook(secret, body, signature, {\\\"id\\\": \\\"x\\\", \\\"type\\\": \\\"other\\\"}, original) == {\\\"ok\\\": False, \\\"status\\\": 422, \\\"error\\\": \\\"unsupported_event\\\", \\\"type\\\": \\\"other\\\"}\nassert handle_webhook(secret, body, signature, {\\\"id\\\": \\\" \\\", \\\"type\\\": \\\"invoice.paid\\\"}, original) == {\\\"ok\\\": False, \\\"status\\\": 400, \\\"error\\\": \\\"invalid_event\\\"}\nnew = handle_webhook(secret, body, signature, {\\\"id\\\": \\\" new \\\", \\\"type\\\": \\\" invoice.failed \\\"}, original)\nassert new == {\\\"ok\\\": True, \\\"status\\\": 200, \\\"replayed\\\": False, \\\"delivery\\\": {\\\"event_id\\",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -m py_compile solution.py webhooks/*.py && python3 -m unittest -v && python3 - <<'PY'\nimport hashlib\nimport hmac\nfrom copy import deepcopy\n\nfrom webhooks.dedup import find_delivery\nfrom webhooks.events import normalize_event\nfrom webhooks.handler import handle_webhook\nfrom webhooks.signature import verify_signature\n\nsecret = \\\"secret\\\"\nbody = \\\"body\\\"\nsignature = \\\"sha256=\\\" + hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()\n\nassert verify_signature(secret, body, signature)\nassert not verify_signature(secret, body, signature.upper())\nassert not verify_signature(secret, body, \\\"sha256=\\\" + \\\"A\\\" * 64)\nassert not verify_signature(secret, body, None)\n\nsource = {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\" invoice.paid \\\", \\\"nested\\\": {\\\"value\\\": []}}\nnormalized = normalize_event(source)\nnormalized[\\\"nested\\\"][\\\"value\\\"].append(1)\nassert source == {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\" invoice.paid \\\", \\\"nested\\\": {\\\"value\\\": []}}\n\noriginal = [{\\\"event_id\\\": \\\"id\\\", \\\"type\\\": \\\"invoice.failed\\\", \\\"meta\\\": {\\\"x\\\": 1}}]\nfound = find_delivery(original, \\\"id\\\")\nfound[\\\"meta\\\"][\\\"x\\\"] = 2\nassert original[0][\\\"meta\\\"][\\\"x\\\"] == 1\nsnapshot = deepcopy(original)\nreplay = handle_webhook(secret, body, signature, {\\\"id\\\": \\\" id \\\", \\\"type\\\": \\\"invoice.paid\\\"}, original)\nassert replay == {\\\"ok\\\": True, \\\"status\\\": 200, \\\"replayed\\\": True, \\\"delivery\\\": snapshot[0], \\\"deliveries\\\": snapshot}\nassert original == snapshot\nassert handle_webhook(secret, body, signature, {\\\"id\\\": \\\"x\\\", \\\"type\\\": \\\"other\\\"}, original) == {\\\"ok\\\": False, \\\"status\\\": 422, \\\"error\\\": \\\"unsupported_event\\\", \\\"type\\\": \\\"other\\\"}\nassert handle_webhook(secret, body, signature, {\\\"id\\\": \\\" \\\", \\\"type\\\": \\\"invoice.paid\\\"}, original) == {\\\"ok\\\": False, \\\"status\\\": 400, \\\"error\\\": \\\"invalid_event\\\"}\nnew = handle_webhook(secret, body, signature, {\\\"id\\\": \\\" new \\\", \\\"type\\\": \\\" invoice.failed \\\"}, original)\nassert new == {\\\"ok\\\": True, \\\"status\\\": 200, \\\"replayed\\\": False, \\\"delivery\\\": {\\\"event_",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 89.521,
+        "event_errors": [],
+        "final_message": "Implemented signed idempotent webhook dispatch across the webhooks package.\n\n- Added strict HMAC-SHA256 signature verification.\n- Added deep-copying event normalization and validation.\n- Added immutable delivery lookup and append behavior.\n- Implemented handler responses for invalid signatures/events, unsupported types, replays, and new deliveries.\n\nValidated with `python3 -m py_compile`, the existing unittest suite, targeted behavior assertions, and `git diff --check`.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f9e-0043-71a2-8ef5-ee7f45f7635a",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 4,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 84480,
+          "input_tokens": 102592,
+          "output_tokens": 4197,
+          "reasoning_output_tokens": 931,
+          "uncached_input_tokens": 18112
+        }
+      },
+      "repetition": 1,
+      "run_order": 20,
+      "spec": {
+        "bytes": 2100,
+        "characters": 2100,
+        "lines": 39,
+        "words": 264
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-crnbpxhn\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r1",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "dc5403478b83828cc0f8e6752ae83e29357893a55eae4d30ac230d0eb2392225",
+        "spec_sha256": "a9d4ab524ab7b0ec849cc04ad933ac71d79c7311bb872a2318628d47b335e613",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' webhooks/signature.py && sed -n '1,260p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,280p' webhooks/handler.py && sed -n '1,160p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 50.487,
+        "event_errors": [],
+        "final_message": "Implemented the webhook verification, normalization, supported-type handling, deduplication, and immutable delivery updates.\n\nValidated with:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile solution.py webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05f9f-63b4-7100-b643-676dc02738c1",
+        "tool_call_total": 3,
+        "tool_calls": {
+          "command_execution": 2,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 54272,
+          "input_tokens": 63680,
+          "output_tokens": 2312,
+          "reasoning_output_tokens": 553,
+          "uncached_input_tokens": 9408
+        }
+      },
+      "repetition": 1,
+      "run_order": 21,
+      "spec": {
+        "bytes": 1728,
+        "characters": 1728,
+        "lines": 34,
+        "words": 156
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-xcexmn_2\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": false,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.5,
+        "acceptance_passed": 2,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          },
+          {
+            "name": "build exact refund event",
+            "reason": "expected {'type': 'refund.created', 'account_id': 'a1', 'order_id': 'o1', 'refund_id': 'r1', 'amount_cents': 250, 'reason': 'duplicate charge'}, got {'account_id': 'a1', 'amount_cents': 250, 'order_id': 'o1', 'reason': ' duplicate charge ', 'refund_id': 'r1', 'type': 'refund.created'}"
+          }
+        ],
+        "pass_rate": 0.75,
+        "passed": 6,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r1",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "5b3570f1d271dffe4d8720370813cececb3ad4e503882218d9e4cd6a341b6165",
+        "spec_sha256": "b2af611f0ebfa966e7b5a5d7ac94389d121e11188836fca5f9a1b09fad6387ea",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 3,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '\"'!*.pyc'\"' | sed -n '1,160p'\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/service.py && sed -n '1,240p' billing/ledger.py && sed -n '1,200p' billing/events.py && sed -n '1,200p' billing/__init__.py && sed -n '1,260p' test_smoke.py && sed -n '1,160p' solution.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && sed -n '1,240p' billing/notifications.py && rg -n \\\"execute_refund|find_by_key|append_entry|build_refund_event\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python -m unittest -v && python -m py_compile billing/*.py solution.py && git diff --check && git diff'",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -v && python3 -m py_compile billing/*.py solution.py && git diff --check && git diff'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 - <<'PY'\nfrom copy import deepcopy\nfrom solution import execute_refund\nfrom billing.ledger import append_entry, find_by_key\nfrom billing.events import build_refund_event\n\norder = {\\\"id\\\": \\\"o1\\\", \\\"account_id\\\": \\\"a1\\\", \\\"status\\\": \\\"paid\\\", \\\"paid_cents\\\": 500, \\\"refunded_cents\\\": 0, \\\"meta\\\": {\\\"x\\\": 1}}\nrequest = {\\\"key\\\": \\\" k \\\", \\\"refund_id\\\": \\\" r1 \\\", \\\"amount_cents\\\": 100, \\\"reason\\\": \\\" reason \\\"}\nledger, events = [], []\nbefore = deepcopy((order, request, ledger, events))\ncreated = execute_refund(order, request, ledger, events)\nassert created == {\\\"ok\\\": True, \\\"replayed\\\": False, \\\"refund\\\": {\\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"key\\\": \\\"k\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100}, \\\"order\\\": {\\\"id\\\": \\\"o1\\\", \\\"account_id\\\": \\\"a1\\\", \\\"status\\\": \\\"paid\\\", \\\"paid_cents\\\": 500, \\\"refunded_cents\\\": 100, \\\"meta\\\": {\\\"x\\\": 1}}, \\\"ledger\\\": [{\\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"key\\\": \\\"k\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100}], \\\"events\\\": [{\\\"type\\\": \\\"refund.created\\\", \\\"account_id\\\": \\\"a1\\\", \\\"order_id\\\": \\\"o1\\\", \\\"refund_id\\\": \\\"r1\\\", \\\"amount_cents\\\": 100, \\\"reason\\\": \\\"reason\\\"}]}\nassert (order, request, ledger, events) == before\nreplay = execute_refund(order, request, created[\\\"ledger\\\"], created[\\\"events\\\"])\nassert replay[\\\"ok\\\"] and replay[\\\"replayed\\\"] and replay[\\\"ledger\\\"] == created[\\\"ledger\\\"] and replay[\\\"events\\\"] == created[\\\"events\\\"]\nassert execute_refund(order, {**request, \\\"refund_id\\\": \\\"new\\\"}, created[\\\"ledger\\\"], []) == {\\\"ok\\\": False, \\\"error\\\": \\\"idempotency_conflict\\\"}\nassert execute_refund(order, {**request, \\\"amount_cents\\\": 501}, created[\\\"ledger\\\"], []) == {\\\"ok\\\": False, \\\"error\\\": \\\"amount_exceeds_remaining\\\"}\nassert find_by_key(created[\\\"ledger\\\"], \\\"a1\\\", \\\"k\\\") == created[\\\"refund\\\"]\nassert append_entry([], {\\\"x\\\": []}) == [{\\\"x\\\": []}]\nassert build_refund_event(created[\\\"refund\\\"], \\\"reason\\\") == created[\\\"events\\\"][0]\nprint(\\\"additional contract checks passed\\\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 69.706,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow and helper functions.\n\n- Added ordered validation, immutable updates, replay/conflict handling, and exact refund/event payloads.\n- Implemented deep-copy-safe ledger lookup and append helpers.\n- Verified with `python3 -m unittest -v`, `py_compile`, `git diff --check`, and additional contract checks.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa0-2eaf-7383-97cb-4d7b814e2384",
+        "tool_call_total": 7,
+        "tool_calls": {
+          "command_execution": 6,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 113664,
+          "input_tokens": 135326,
+          "output_tokens": 3207,
+          "reasoning_output_tokens": 555,
+          "uncached_input_tokens": 21662
+        }
+      },
+      "repetition": 1,
+      "run_order": 22,
+      "spec": {
+        "bytes": 2511,
+        "characters": 2511,
+        "lines": 42,
+        "words": 325
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-sy6n1tut\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": false,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 0.75,
+        "acceptance_passed": 3,
+        "acceptance_total": 4,
+        "failures": [
+          {
+            "name": "find scoped key and return copy",
+            "reason": "expected {'account_id': 'a1', 'key': 'once', 'nested': {'x': 1}}, got None"
+          }
+        ],
+        "pass_rate": 0.875,
+        "passed": 7,
+        "task_success": false,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r1",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "c8728811516e6f98ea52d91a340595d5bb0c41ea8a57d6c23cbf1411f680912e",
+        "spec_sha256": "a7da0ea88438d419b765512514d78dc69506a6254f1e07a42764cb0897aea944",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' billing/ledger.py && sed -n '1,240p' billing/events.py && sed -n '1,300p' billing/service.py && sed -n '1,260p' solution.py && sed -n '1,300p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,260p' billing/models.py && sed -n '1,220p' billing/orders.py && sed -n '1,220p' billing/notifications.py && rg -n \\\"execute_refund|append_entry|find_by_key|build_refund_event\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py billing/ledger.py billing/events.py billing/service.py && git diff --check && git diff'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 58.33,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow in:\n\n- [billing/service.py](/tmp/execution-packet-bench-3hr09gnk/023-refund-ledger-semantic-r1/refund-ledger/billing/service.py)\n- [billing/ledger.py](/tmp/execution-packet-bench-3hr09gnk/023-refund-ledger-semantic-r1/refund-ledger/billing/ledger.py)\n- [billing/events.py](/tmp/execution-packet-bench-3hr09gnk/023-refund-ledger-semantic-r1/refund-ledger/billing/events.py)\n\nIt validates in the required order, preserves caller inputs through deep copies, handles scoped idempotent replay/conflict behavior, and emits the exact refund event shape.\n\nVerified with:\n\n`python3 -m unittest -q test_smoke.py`\n\nand `python3 -m py_compile` on all changed modules.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa1-43e4-7352-b30d-cd1f22ca0337",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 70400,
+          "input_tokens": 81423,
+          "output_tokens": 2421,
+          "reasoning_output_tokens": 630,
+          "uncached_input_tokens": 11023
+        }
+      },
+      "repetition": 1,
+      "run_order": 23,
+      "spec": {
+        "bytes": 1994,
+        "characters": 1994,
+        "lines": 42,
+        "words": 165
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-9kwl1py6\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "refund-ledger",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 8,
+        "task_success": true,
+        "total": 8
+      },
+      "pair_id": "refund-ledger:r1",
+      "provenance": {
+        "fixture_sha256": "da442fa8c8b5ccc167c08cce1e631047c4bb51ac25b53a55bf3a50d7b8191196",
+        "prompt_sha256": "e294c7afbc15d2749fbdac2e7ecb5c54fbd67eae1e3c7ba2cc75a36596f2041d",
+        "spec_sha256": "5fede1166d55c99360ab9b0040e8bfbd2a07f2c15ec1791279be65b7e0e4549f",
+        "starter_sha256": "5d5480b74e788414e0d1fbe1e9af618a772845f15639d177fd0f71e4e762d52a"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 2,
+          "read": 2,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' billing/ledger.py && sed -n '1,260p' billing/events.py && sed -n '1,320p' billing/service.py && sed -n '1,220p' solution.py && sed -n '1,320p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,240p' billing/models.py && sed -n '1,240p' billing/orders.py && sed -n '1,160p' billing/notifications.py && find . -name AGENTS.md -print\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m py_compile solution.py billing/*.py && python3 -m unittest -q test_smoke.py && git diff --check && git diff'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 53.715,
+        "event_errors": [],
+        "final_message": "Implemented the idempotent refund workflow in `billing`.\n\n- Added scoped, deep-copy ledger lookup and append behavior.\n- Added exact refund event construction.\n- Implemented validation order, refundability checks, replay/conflict handling, and immutable success responses.\n\nVerified with:\n\n```bash\npython3 -m py_compile solution.py billing/*.py\npython3 -m unittest -q test_smoke.py\n```\n\nBoth passed.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa2-2e82-7cd1-ab9f-cb17d198d3b5",
+        "tool_call_total": 5,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 2
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 65280,
+          "input_tokens": 81077,
+          "output_tokens": 2240,
+          "reasoning_output_tokens": 385,
+          "uncached_input_tokens": 15797
+        }
+      },
+      "repetition": 1,
+      "run_order": 24,
+      "spec": {
+        "bytes": 1861,
+        "characters": 1861,
+        "lines": 29,
+        "words": 178
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "7486e228ac26e2d57dbf1517a2bac43a3700ffb8a7ac2570e549953b53141083",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-93ov3xg2\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r2",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "dc5403478b83828cc0f8e6752ae83e29357893a55eae4d30ac230d0eb2392225",
+        "spec_sha256": "a9d4ab524ab7b0ec849cc04ad933ac71d79c7311bb872a2318628d47b335e613",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,200p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,260p' webhooks/handler.py && sed -n '1,200p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py && git diff --check && git diff'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 52.472,
+        "event_errors": [],
+        "final_message": "Implemented webhook verification, normalization, deduplication, and immutable delivery handling in the requested modules.\n\nVerified successfully:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile ...`\n- `git diff --check`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa3-053d-7512-b364-494718f9e743",
+        "tool_call_total": 3,
+        "tool_calls": {
+          "command_execution": 2,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 50176,
+          "input_tokens": 65035,
+          "output_tokens": 2278,
+          "reasoning_output_tokens": 511,
+          "uncached_input_tokens": 14859
+        }
+      },
+      "repetition": 2,
+      "run_order": 25,
+      "spec": {
+        "bytes": 1728,
+        "characters": 1728,
+        "lines": 34,
+        "words": 156
+      },
+      "variant": "semantic",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-8cdafa46\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r2",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "c6ac3f7a7861ce907029e43089bfa710062ad72628a17f906303c9c201d8ed07",
+        "spec_sha256": "75dadb1afc9621c4b2fbd72ebd28259387f197ae2916f9a89cbaba964711f140",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 1
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' && sed -n '1,240p' webhooks/signature.py && sed -n '1,240p' webhooks/events.py && sed -n '1,240p' webhooks/dedup.py && sed -n '1,260p' webhooks/handler.py && sed -n '1,200p' solution.py && sed -n '1,260p' test_smoke.py\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -q test_smoke.py && python3 -m py_compile solution.py webhooks/*.py'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'git diff --check && git diff -- webhooks/signature.py webhooks/events.py webhooks/dedup.py webhooks/handler.py'",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 50.191,
+        "event_errors": [],
+        "final_message": "Implemented webhook dispatch behavior in the four routed modules.\n\nVerified successfully:\n\n- `python3 -m unittest -q test_smoke.py`\n- `python3 -m py_compile solution.py webhooks/*.py`\n- `git diff --check`",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa3-d879-7590-8429-c57da75c1512",
+        "tool_call_total": 4,
+        "tool_calls": {
+          "command_execution": 3,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 64256,
+          "input_tokens": 81224,
+          "output_tokens": 2005,
+          "reasoning_output_tokens": 396,
+          "uncached_input_tokens": 16968
+        }
+      },
+      "repetition": 2,
+      "run_order": 26,
+      "spec": {
+        "bytes": 1670,
+        "characters": 1670,
+        "lines": 27,
+        "words": 152
+      },
+      "variant": "packet",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-tm2spqrk\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "error": null,
+      "grade": {
+        "acceptance": {
+          "A1": true,
+          "A2": true,
+          "A3": true,
+          "A4": true
+        },
+        "acceptance_pass_rate": 1.0,
+        "acceptance_passed": 4,
+        "acceptance_total": 4,
+        "failures": [],
+        "pass_rate": 1.0,
+        "passed": 9,
+        "task_success": true,
+        "total": 9
+      },
+      "pair_id": "webhook-dispatch:r2",
+      "provenance": {
+        "fixture_sha256": "235e041ad2759a39140b4e5947fa28e68189318d2143115cdd86c00f0aa29bd0",
+        "prompt_sha256": "2311ea1744ffa449209584e39bd2253d6133444ab65f54ea1ad59e655d3a9129",
+        "spec_sha256": "ef60eaca5b9979d2802238729410d170053ad8fa5b159629708fddfb33927329",
+        "starter_sha256": "07121d451d124afd520deca4f9174792cbd23a105564d0a56214957a9fda50c9"
+      },
+      "provider": {
+        "command_categories": {
+          "discovery": 1,
+          "read": 1,
+          "verify": 2
+        },
+        "command_log": [
+          {
+            "command": "/bin/bash -lc \"pwd && rg --files -g '\"'!*__pycache__*'\"' -g '\"'!*.pyc'\"' && rg -n \\\"handle_webhook|verify_signature|normalize_event|find_delivery|webhook\\\" .\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"sed -n '1,200p' webhooks/signature.py && sed -n '1,200p' webhooks/events.py && sed -n '1,200p' webhooks/dedup.py && sed -n '1,240p' webhooks/handler.py && sed -n '1,240p' test_smoke.py && sed -n '1,160p' webhooks/__init__.py && sed -n '1,160p' solution.py && git status --short\"",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc 'python -m unittest -v && python -m py_compile solution.py webhooks/*.py && git diff --check && git diff'",
+            "exit_code": 127
+          },
+          {
+            "command": "/bin/bash -lc 'python3 -m unittest -v && python3 -m py_compile solution.py webhooks/*.py && git diff --check && git diff'",
+            "exit_code": 0
+          },
+          {
+            "command": "/bin/bash -lc \"python3 -c 'import copy, hashlib, hmac; from webhooks.signature import verify_signature; from webhooks.events import normalize_event; from webhooks.dedup import find_delivery; from solution import handle_webhook; secret=\\\"s\\\"; body=\\\"b\\\"; sig=\\\"sha256=\\\"+hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest(); original_event={\\\"id\\\":\\\" e \\\",\\\"type\\\":\\\" invoice.failed \\\",\\\"nested\\\":{\\\"x\\\":[]}}; original_deliveries=[{\\\"event_id\\\":\\\"e\\\",\\\"type\\\":\\\"invoice.paid\\\",\\\"nested\\\":{\\\"a\\\":1}}]; assert verify_signature(secret,body,sig); assert not verify_signature(secret,body,sig.upper()); normalized=normalize_event(original_event); normalized[\\\"nested\\\"][\\\"x\\\"].append(1); assert original_event[\\\"nested\\\"][\\\"x\\\"] == []; found=find_delivery(original_deliveries,\\\"e\\\"); found[\\\"nested\\\"][\\\"a\\\"]=2; assert original_deliveries[0][\\\"nested\\\"][\\\"a\\\"] == 1; duplicate=handle_webhook(secret,body,sig,original_event,original_deliveries); assert duplicate == {\\\"ok\\\":True,\\\"status\\\":200,\\\"replayed\\\":True,\\\"delivery\\\":{\\\"event_id\\\":\\\"e\\\",\\\"type\\\":\\\"invoice.paid\\\",\\\"nested\\\":{\\\"a\\\":1}},\\\"deliveries\\\":original_deliveries}; created=handle_webhook(secret,body,sig,{\\\"id\\\":\\\" n \\\",\\\"type\\\":\\\" invoice.paid \\\"},original_deliveries); assert created == {\\\"ok\\\":True,\\\"status\\\":200,\\\"replayed\\\":False,\\\"delivery\\\":{\\\"event_id\\\":\\\"n\\\",\\\"type\\\":\\\"invoice.paid\\\"},\\\"deliveries\\\":original_deliveries+[{\\\"event_id\\\":\\\"n\\\",\\\"type\\\":\\\"invoice.paid\\\"}]}; assert original_deliveries == [{\\\"event_id\\\":\\\"e\\\",\\\"type\\\":\\\"invoice.paid\\\",\\\"nested\\\":{\\\"a\\\":1}}]; assert handle_webhook(secret,body,sig,{\\\"id\\\":\\\"\\\",\\\"type\\\":\\\"invoice.paid\\\"},[]) == {\\\"ok\\\":False,\\\"status\\\":400,\\\"error\\\":\\\"invalid_event\\\"}; assert handle_webhook(secret,body,sig,{\\\"id\\\":\\\"x\\\",\\\"type\\\":\\\"unknown\\\"},[]) == {\\\"ok\\\":False,\\\"status\\\":422,\\\"error\\\":\\\"unsupported_event\\\",\\\"type\\\":\\\"unknown\\\"}'\"",
+            "exit_code": 0
+          }
+        ],
+        "duration_seconds": 83.783,
+        "event_errors": [],
+        "final_message": "Implemented signed, normalized, idempotent webhook dispatch across the `webhooks` package.\n\nVerified with:\n\n- `python3 -m unittest -v`\n- `python3 -m py_compile solution.py webhooks/*.py`\n- `git diff --check`\n- Additional inline assertions for invalid inputs, deep-copy behavior, replay handling, and new delivery creation.",
+        "return_code": 0,
+        "stderr_tail": "",
+        "thread_id": "01a05fa4-a2a6-7c51-a5e5-39ebb6148c1a",
+        "tool_call_total": 6,
+        "tool_calls": {
+          "command_execution": 5,
+          "file_change": 1
+        },
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 100608,
+          "input_tokens": 119540,
+          "output_tokens": 3522,
+          "reasoning_output_tokens": 1090,
+          "uncached_input_tokens": 18932
+        }
+      },
+      "repetition": 2,
+      "run_order": 27,
+      "spec": {
+        "bytes": 2100,
+        "characters": 2100,
+        "lines": 39,
+        "words": 264
+      },
+      "variant": "markdown",
+      "verification": {
+        "command": "python3 -m unittest -q test_smoke.py",
+        "fixture_sha256": "1e3ed183708e16cb2d42d94918e54b26384a94295af1db2fefe9a085d7970fbe",
+        "return_code": 0,
+        "stderr_tail": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/semantic-spec-sandbox-04q_vuyj\"))\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+        "stdout_tail": ""
+      }
+    }
+  ],
+  "run_id": "20260902T003708Z",
+  "schema_version": 1,
+  "seed": 20260901,
+  "static": [
+    {
+      "case": "refund-ledger",
+      "variants": {
+        "markdown": {
+          "bytes": 2511,
+          "characters": 2511,
+          "lines": 42,
+          "words": 325
+        },
+        "packet": {
+          "bytes": 1861,
+          "characters": 1861,
+          "lines": 29,
+          "words": 178
+        },
+        "semantic": {
+          "bytes": 1994,
+          "characters": 1994,
+          "lines": 42,
+          "words": 165
+        }
+      }
+    },
+    {
+      "case": "tenant-settings",
+      "variants": {
+        "markdown": {
+          "bytes": 1793,
+          "characters": 1793,
+          "lines": 33,
+          "words": 259
+        },
+        "packet": {
+          "bytes": 1202,
+          "characters": 1202,
+          "lines": 24,
+          "words": 135
+        },
+        "semantic": {
+          "bytes": 1289,
+          "characters": 1289,
+          "lines": 34,
+          "words": 140
+        }
+      }
+    },
+    {
+      "case": "webhook-dispatch",
+      "variants": {
+        "markdown": {
+          "bytes": 2100,
+          "characters": 2100,
+          "lines": 39,
+          "words": 264
+        },
+        "packet": {
+          "bytes": 1670,
+          "characters": 1670,
+          "lines": 27,
+          "words": 152
+        },
+        "semantic": {
+          "bytes": 1728,
+          "characters": 1728,
+          "lines": 34,
+          "words": 156
+        }
+      }
+    }
+  ],
+  "variants": [
+    "markdown",
+    "semantic",
+    "packet"
+  ]
+}

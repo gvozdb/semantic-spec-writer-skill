@@ -75,6 +75,27 @@ uncached input tokens, and 15 for output tokens. A one-off conversion costs more
 than using the original document. For new work, author the semantic spec directly
 instead of creating a prose draft first.
 
+### Execution packet benchmark
+
+Packet v3 adds a repository-bound edit route and a bounded execution loop to the
+same Semantic v1 requirements. A separate 27-run benchmark isolates that packet
+benefit from ordinary prose compression:
+
+| Measure | Semantic v1 | Packet v3 | Packet result |
+|---|---:|---:|---:|
+| Successful tasks | 6/9 | 9/9 | 100% success |
+| Acceptance tests | 94.67% | 100% | All tests passed |
+| Total input tokens | 708,429 | 690,958 | 2.47% fewer |
+| Uncached input tokens | 120,653 | 105,998 | 12.15% fewer |
+| Output tokens | 19,509 | 19,233 | 1.41% fewer |
+| Agent wall time | 462.362s | 451.832s | 2.28% lower |
+| Shell commands | 25 | 25 | No increase |
+
+This establishes a measured quality gain on the three multi-file fixtures. The
+all-run token reductions are observed results, not a universal savings claim:
+only 6/9 pairs were jointly successful, and the equal-success uncached-token
+confidence interval crossed zero.
+
 ```bash
 python3 benchmarks/benchmark.py validate
 python3 benchmarks/benchmark.py static --check
@@ -84,7 +105,9 @@ python3 benchmarks/benchmark.py run --provider mock --repetitions 1
 See the [implementation report](BENCHMARK.md),
 [context report](CONTEXT_BENCHMARK.md),
 [lifecycle report](LIFECYCLE_BENCHMARK.md),
+[execution packet report](HANDOFF_BENCHMARK.md),
 [raw artifacts](benchmarks/results/published/gpt-5.6-terra-medium-20260901-generated/),
+[packet artifacts](benchmarks/results/published/gpt-5.6-terra-medium-20260902-execution-packet/),
 and [methodology and commands](benchmarks/README.md).
 
 ## Project layout

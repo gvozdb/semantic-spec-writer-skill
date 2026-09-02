@@ -168,6 +168,17 @@ and verification command events. A command event can contain multiple shell
 operations, so those counts are directional and are reported separately from
 provider token telemetry.
 
+Published `gpt-5.6-terra`, medium-reasoning Packet v3 run:
+
+- 27/27 complete, unique arm runs with no provider or verification failures;
+- Packet v3 task success: 9/9; Semantic v1 task success: 6/9;
+- Packet v3 used 12.15% fewer uncached-input tokens across all runs;
+- the strict equal-success comparison covered 6/9 pairs and its 95% fixture
+  confidence interval crossed zero.
+
+See the [rendered report](../HANDOFF_BENCHMARK.md) and
+[raw result](results/published/gpt-5.6-terra-medium-20260902-execution-packet/handoff-r3.json).
+
 Use `--keep-workspaces` only when failed implementations need inspection.
 Without it, generated workspaces are removed after the run.
 

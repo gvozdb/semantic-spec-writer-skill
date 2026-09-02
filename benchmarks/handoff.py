@@ -657,12 +657,12 @@ def report(document: dict[str, Any]) -> str:
     lines = [
         "# Execution Packet Benchmark",
         "",
-        f"Run: `{document['run_id']}`  ",
-        f"Provider: `{document['provider']}`  ",
-        f"Model: `{document.get('model') or 'provider default'}`  ",
-        f"Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`  ",
-        f"Cases: {len(document['cases'])}  ",
-        f"Repetitions: {document['repetitions']}",
+        f"- Run: `{document['run_id']}`",
+        f"- Provider: `{document['provider']}`",
+        f"- Model: `{document.get('model') or 'provider default'}`",
+        f"- Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`",
+        f"- Cases: {len(document['cases'])}",
+        f"- Repetitions: {document['repetitions']}",
         "",
     ]
     if not credible:
@@ -723,7 +723,7 @@ def report(document: dict[str, Any]) -> str:
         "",
         f"Packet used fewer uncached-input tokens in **{primary_uncached['wins']}/{primary_uncached['pairs']}** paired runs.",
         f"Primary comparison coverage: **{primary_uncached['pairs']}/{expected_primary_pairs}** jointly successful pairs.",
-        "Only pairs where both v1 and v2 passed every acceptance group are included in the primary usage comparison.",
+        "Only pairs where both Semantic v1 and Packet v3 passed every acceptance group are included in the primary usage comparison.",
         "",
         "## Static artifacts",
         "",
@@ -755,8 +755,8 @@ def report(document: dict[str, Any]) -> str:
             f"versus {semantic_successes}/{len(document['cases']) * document['repetitions']}) and used "
             f"{uncached_usage} across all runs. "
             f"The strict equal-success token comparison covered only {primary_uncached['pairs']}/"
-            f"{expected_primary_pairs} pairs, so this establishes a quality gain for this suite, "
-            "not an isolated full-suite token-saving claim."
+            f"{expected_primary_pairs} pairs, so this establishes a quality gain for this suite. "
+            "The all-run token reduction is an observed result, not an isolated or model-independent token-saving claim."
         )
     elif credible:
         lines.append(
