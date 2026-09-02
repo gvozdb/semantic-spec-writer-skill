@@ -19,7 +19,7 @@ execution packets are intentionally bound to the validated repository snapshot.
 - allows short explanations as comment lines starting with `#`;
 - keeps domain vocabulary local to each specification;
 - compiles repository handoffs into file-owned `do` actions with validated source anchors and stale-route detection;
-- compiles Packet v3 plus exact routed source into sealed Capsule v5 execution context with an edit-before-verify action gate.
+- compiles Packet v3 plus exact routed source into sealed Capsule v5 execution context with an edit-before-verify gate and terminal execution lock.
 
 ## Benefits
 
@@ -106,11 +106,16 @@ confidence interval crossed zero.
 
 Capsule v5 embeds a validated Packet v3 and its exact routed source snapshot.
 Its sealed control identifies source frames as current pre-edit data, rejects a
-no-edit outcome, and requires every routed edit in one atomic file-change
+no-edit outcome, and requires every routed edit in one bundled file-change
 operation before any repository read or command. The exact declared verification
 then runs alone exactly once; any additional tool call fails the action gate. The
 mandatory `do` list is repeated beside each source frame so the model does not
-have to cross-reference a global route while constructing the one-shot patch. The
+have to cross-reference a global route while constructing the one-shot patch. A
+sealed execution lock after the final source frame repeats the exact mutation
+paths and `V1`, then makes `V1 exit 0 -> final answer with zero tools remaining`
+the last actionable instruction. Provider prompts use the
+`capsule-v5-terminal-1` profile: no conflicting generic syntax check, and the
+terminal transition is repeated after the artifact for recency. The
 two-arm harness compares Capsule v5 directly with Packet v3, securely compares
 every routed post-state with the captured starter, and fails no-edit, partial
 edit, split-edit, pre-edit command, substituted verification, or multi-attempt

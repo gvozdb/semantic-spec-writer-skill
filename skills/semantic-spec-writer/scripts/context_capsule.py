@@ -51,9 +51,10 @@ packet_checker = _load_packet_checker()
 
 CAPSULE_VERSION = 5
 LEGACY_CAPSULE_VERSION = 4
+CAPSULE_EXECUTION_PROFILE = "capsule-v5-terminal-1"
 CAPSULE_PROTOCOL = {
     "completion": "all_routed_edits_then_exact_V1_once",
-    "edit_strategy": "single_atomic_file_change",
+    "edit_strategy": "single_bundled_file_change",
     "first_action": "file_change",
     "no_edit": "failure",
     "pre_edit_discovery": "forbidden",
@@ -61,6 +62,7 @@ CAPSULE_PROTOCOL = {
     "pre_edit_verification": "forbidden",
     "recovery": "normal_mode_after_exact_frame_mismatch_or_failed_V1",
     "source_authority": "sealed_current_source_frames",
+    "terminal_lock": "sealed_tail_state_machine",
     "verification": "exact_V1_alone_once_after_all_routed_edits",
     "work_units": "route_actions_adjacent_to_source",
 }
@@ -74,21 +76,24 @@ LEGACY_CAPSULE_PROTOCOL = {
 }
 CAPSULE_CONTROL = (
     "IMPLEMENTATION REQUIRED. The packet frame is the task. Source frames are current "
-    "pre-edit repository bytes, not patches or desired output. FIRST use one atomic "
+    "pre-edit repository bytes, not patches or desired output. FIRST use one bundled "
     "file-change operation containing every edit/create route; do not split the edit. "
     "Each source frame's do list is mandatory; internally check every item before that "
     "single change without using a tool. Before the complete change, do not read files "
     "or run commands. THEN run the exact V1 command alone, exactly once. A pass ends "
-    "the task. A failed V1 or exact-frame mismatch exits this fast path into normal "
-    "recovery; any other tool call or a passing early V1 fails the fast path."
+    "the task: answer immediately with no status, diff, check, or other tool. The sealed "
+    "terminal lock at the tail repeats this exact state transition. A failed V1 or "
+    "exact-frame mismatch exits this fast path into normal recovery; any other tool "
+    "call or a passing early V1 fails the fast path."
 )
 CAPSULE_EXECUTION = (
     "IMPLEMENTATION REQUIRED: packet=task; source frames=current pre-edit bytes, not "
     "desired output; each source frame do list=mandatory local work unit -> internally "
-    "check every do, then one atomic file-change operation contains all routed work; do "
+    "check every do, then one bundled file-change operation contains all routed work; do "
     "not split -> no read/command before complete change -> exact V1 alone exactly once "
-    "-> pass=stop; failed V1/frame mismatch=normal recovery outside fast path; any other "
-    "tool call or early V1=fast-path failure"
+    "-> pass=final answer immediately with zero tools remaining; sealed tail lock repeats "
+    "the transition; failed V1/frame mismatch=normal recovery outside fast path; any "
+    "other tool call or early V1=fast-path failure"
 )
 LEGACY_CAPSULE_EXECUTION = (
     "sealed frames are exact patch operands -> edit immediately or use at most one "
@@ -101,7 +106,20 @@ LEGACY_MAGIC = b"CAPSULE-V4\n"
 EXECUTE_PREFIX = b"@EXECUTE "
 HEADER_PREFIX = b"@HEADER "
 FRAME_PREFIX = b"@FRAME "
+TERMINAL_PREFIX = b"@TERMINAL "
 SEAL_PREFIX = b"@SEAL "
+TERMINAL_STOP_LINE = (
+    b"@STOP V1_EXIT_0=FINAL_ANSWER_NOW;TOOLS_REMAINING=0;"
+    b"NO_STATUS_DIFF_CHECK_OR_OTHER_TOOL\n"
+)
+CAPSULE_TERMINAL_PROFILE = (
+    "CAPSULE-TERMINAL/1 authoritative execution control\n"
+    "Allowed fast path: one bundled file_change for every sealed mutation path -> "
+    "exact V1 once -> final answer.\n"
+    "If exact V1 exits 0, return the final answer immediately; tools remaining=0.\n"
+    "After that pass, do not run syntax, test, read, status, diff, discovery, "
+    "verification, or any other tool."
+)
 EXECUTE_LINE = EXECUTE_PREFIX + CAPSULE_CONTROL.encode("ascii") + b"\n"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_SOURCE_COUNT = 100_000
@@ -213,6 +231,7 @@ def _parse_capsule(
     dict[str, Any],
     bytes,
     list[tuple[dict[str, Any], bytes]],
+    dict[str, Any] | None,
     str,
 ]:
     _require_capsule_size(len(data))
@@ -272,6 +291,21 @@ def _parse_capsule(
         )
         sources.append((descriptor, payload))
 
+    terminal: dict[str, Any] | None = None
+    if wire_version == CAPSULE_VERSION:
+        if offset >= len(data) or data[offset : offset + 1] != b"\n":
+            raise CapsuleError("capsule has missing terminal lock separator")
+        terminal, offset = _prefixed_json(
+            data,
+            offset + 1,
+            TERMINAL_PREFIX,
+            "terminal lock",
+        )
+        _validate_terminal_contract(terminal)
+        stop_line, offset = _line(data, offset, "terminal stop control")
+        if stop_line != TERMINAL_STOP_LINE.removesuffix(b"\n"):
+            raise CapsuleError("capsule has invalid terminal stop control")
+
     seal_start = offset
     seal, offset = _prefixed_json(data, offset, SEAL_PREFIX, "seal")
     _require_keys(seal, {"sha256"}, "seal")
@@ -289,7 +323,14 @@ def _parse_capsule(
     for descriptor, payload, label in framed_payloads:
         if _sha256(payload) != descriptor["content_sha256"]:
             raise CapsuleError(f"{label} content SHA-256 mismatch")
-    return header, packet_descriptor, embedded_packet, sources, seal["sha256"]
+    return (
+        header,
+        packet_descriptor,
+        embedded_packet,
+        sources,
+        terminal,
+        seal["sha256"],
+    )
 
 
 def _normalise_newlines(text: str) -> str:
@@ -355,6 +396,98 @@ def _require_capsule_v1_verification(text: str) -> None:
         raise CapsuleError(
             "Capsule v5 requires exactly one verification entry named V1"
         )
+
+
+def _terminal_contract(text: str, targets: list[Any]) -> dict[str, Any]:
+    """Build the sealed final-state reminder from validated Packet data."""
+
+    _require_capsule_v1_verification(text)
+    command = packet_checker.parse_verify_entries(text)[0][1]
+    edit_paths = [
+        target.relative_path
+        for target in targets
+        if target.kind in {"edit", "create"}
+    ]
+    if not edit_paths:
+        raise CapsuleError("Capsule v5 requires at least one edit or create route")
+    return {
+        "kind": "capsule_v5_execution_lock",
+        "on_v1_failure": "normal_recovery_fast_path_failed",
+        "on_v1_pass": "FINAL_ANSWER_NOW_NO_MORE_TOOLS",
+        "step_1": {
+            "count": 1,
+            "mode": "bundled_all_routes",
+            "paths": edit_paths,
+            "tool": "file_change",
+        },
+        "step_2": {
+            "command": command,
+            "count": 1,
+            "name": "V1",
+            "tool": "command_execution",
+        },
+        "tool_call_budget": 2,
+    }
+
+
+def _validate_terminal_contract(value: dict[str, Any]) -> None:
+    _require_keys(
+        value,
+        {
+            "kind",
+            "on_v1_failure",
+            "on_v1_pass",
+            "step_1",
+            "step_2",
+            "tool_call_budget",
+        },
+        "terminal lock",
+    )
+    step_1 = value["step_1"]
+    step_2 = value["step_2"]
+    if (
+        value["kind"] != "capsule_v5_execution_lock"
+        or value["on_v1_failure"] != "normal_recovery_fast_path_failed"
+        or value["on_v1_pass"] != "FINAL_ANSWER_NOW_NO_MORE_TOOLS"
+        or type(value["tool_call_budget"]) is not int
+        or value["tool_call_budget"] != 2
+        or not isinstance(step_1, dict)
+        or not isinstance(step_2, dict)
+    ):
+        raise CapsuleError("terminal lock has invalid state machine")
+    _require_keys(step_1, {"count", "mode", "paths", "tool"}, "terminal step 1")
+    _require_keys(step_2, {"command", "count", "name", "tool"}, "terminal step 2")
+    paths = step_1["paths"]
+    if (
+        type(step_1["count"]) is not int
+        or step_1["count"] != 1
+        or step_1["mode"] != "bundled_all_routes"
+        or step_1["tool"] != "file_change"
+        or not isinstance(paths, list)
+        or not paths
+        or any(not isinstance(path, str) or not path for path in paths)
+        or type(step_2["count"]) is not int
+        or step_2["count"] != 1
+        or step_2["name"] != "V1"
+        or step_2["tool"] != "command_execution"
+        or not isinstance(step_2["command"], str)
+        or not step_2["command"]
+        or "\n" in step_2["command"]
+        or "\r" in step_2["command"]
+    ):
+        raise CapsuleError("terminal lock has invalid action steps")
+    if len(paths) != len(set(paths)):
+        raise CapsuleError("terminal lock has duplicate mutation paths")
+
+
+def _terminal_block(contract: dict[str, Any]) -> bytes:
+    return (
+        b"\n"
+        + TERMINAL_PREFIX
+        + _canonical_json(contract)
+        + b"\n"
+        + TERMINAL_STOP_LINE
+    )
 
 
 def _route_action_groups(text: str, targets: list[Any]) -> tuple[tuple[str, ...], ...]:
@@ -855,6 +988,7 @@ def _build_capsule(
         _require_capsule_v1_verification(v3_text)
         try:
             targets = packet_checker.parse_routes(v3_text)
+            terminal = _terminal_contract(v3_text, targets)
             if len(targets) > MAX_SOURCE_COUNT:
                 raise CapsuleError(
                     f"Packet v3 has too many routes for Capsule v5: "
@@ -910,6 +1044,7 @@ def _build_capsule(
             raise CapsuleError("Capsule has too many source frames")
         snapshot.assert_creates_absent()
         embedded = _embedded_packet(packet_text).encode("utf-8")
+        terminal_block = _terminal_block(terminal)
         header = {
             "packet_sha256": _sha256(packet_bytes),
             "protocol": CAPSULE_PROTOCOL,
@@ -925,6 +1060,7 @@ def _build_capsule(
             + len(header_line)
             + _frame_length(embedded_descriptor, embedded)
             + sum(_frame_length(descriptor, payload) for descriptor, payload in sources)
+            + len(terminal_block)
             # The final SHA-256 is always 64 ASCII hex characters, so this is
             # the exact trailer length without serializing the body first.
             + len(_seal_line("0" * 64))
@@ -940,6 +1076,7 @@ def _build_capsule(
         body.extend(_frame(embedded_descriptor, embedded))
         for descriptor, payload in sources:
             body.extend(_frame(descriptor, payload))
+        body.extend(terminal_block)
         seal = _sha256(body)
         body.extend(_seal_line(seal))
         if len(body) != planned_length:
@@ -1094,9 +1231,14 @@ def _check_capsule(
     try:
         data, capsule_file = _read_capsule_input(capsule)
         trusted_packet = _open_regular(packet, "trusted packet")
-        header, packet_descriptor, embedded_packet, sources, seal = _parse_capsule(
-            data
-        )
+        (
+            header,
+            packet_descriptor,
+            embedded_packet,
+            sources,
+            terminal,
+            seal,
+        ) = _parse_capsule(data)
         version = header["version"]
         _validate_packet_descriptor(packet_descriptor, version)
         expected_packet_descriptor = _packet_descriptor(embedded_packet, version)
@@ -1148,6 +1290,11 @@ def _check_capsule(
             raise CapsuleError(
                 "reconstructed Packet v3 is invalid: " + "; ".join(v3_errors)
             )
+        if version == CAPSULE_VERSION and terminal != _terminal_contract(
+            v3_text,
+            targets,
+        ):
+            raise CapsuleError("terminal lock does not match reconstructed Packet v3")
         route_actions = _route_action_groups(v3_text, targets)
         route_hash = v3_result.get("route_sha256")
         declared_route_hash = v3_result.get("declared_route_sha256")
@@ -1541,11 +1688,20 @@ def _open_output_regular(
 
 def _validate_capsule_artifact(data: bytes) -> None:
     _require_capsule_size(len(data), "existing Capsule output")
-    header, packet_descriptor, _, sources, _ = _parse_capsule(data)
+    header, packet_descriptor, embedded, sources, terminal, _ = _parse_capsule(data)
     version = header["version"]
     _validate_packet_descriptor(packet_descriptor, version)
     for descriptor, _ in sources:
         _validate_source_descriptor(descriptor, version)
+    if version == CAPSULE_VERSION:
+        try:
+            embedded_text = embedded.decode("utf-8")
+            original = _normalise_newlines(_reconstructed_packet(embedded_text, version))
+            targets = packet_checker.parse_routes(original)
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise CapsuleError("existing Capsule output has invalid terminal input") from exc
+        if terminal != _terminal_contract(original, targets):
+            raise CapsuleError("existing Capsule output has mismatched terminal lock")
 
 
 def _same_named_inode(

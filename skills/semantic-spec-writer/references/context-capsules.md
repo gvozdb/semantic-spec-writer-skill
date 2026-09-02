@@ -9,10 +9,23 @@ snapshot in one sealed, length-framed UTF-8 artifact.
 Packet v3 tells an agent where to look. Capsule v5 supplies those bytes before
 the first tool call. A sealed execution control marks the packet as the task and
 every source frame as current pre-edit data, never desired output. Its fast path
-permits exactly two tool calls: one atomic file-change operation containing every
+permits exactly two tool calls: one bundled file-change operation containing every
 routed edit, then the exact declared `V1` alone once. An exact-frame mismatch or
 failed `V1` exits the fast path into normal recovery; that attempt is not
 claim-eligible.
+
+A canonical execution lock is sealed after the final source frame. It repeats
+the exact mutation paths and `V1` command as a two-step state machine, then ends
+with `V1 exit 0 -> final answer now; zero tools remaining`. Placing the stop
+condition at the tail keeps it adjacent to the agent's next action instead of
+relying only on an instruction before a large source payload.
+
+When a host wraps the Capsule in its own prompt, use execution profile
+`capsule-v5-terminal-1`: omit generic syntax or test instructions, place the
+Capsule unchanged, then repeat its terminal transition as the final
+non-whitespace instruction. The exact Packet `V1` is the only fast-path check.
+This profile is separate from the sealed wire artifact; hosts must not weaken
+the Capsule's two-call gate.
 
 Each current-source frame repeats its route's mandatory `do` list in canonical
 metadata. This creates a local work unit: requirements and exact source bytes are
@@ -90,12 +103,15 @@ permissions are unavailable, but these checks do not serialize writers.
   source. Internally check every item before issuing the single change.
 - A substantive routed edit is required. A prose-only or no-edit result fails
   the Capsule contract.
-- First action: use one atomic file-change operation containing every routed
+- First action: use one bundled file-change operation containing every routed
   edit/create `do`, directly from the sealed source frames. Do not split it.
 - Do not perform a repository read, discovery, status, baseline check, or any
   tool call other than that single change and the declared `V1`.
 - A Capsule packet declares exactly one `verify` entry, named `V1`; run that
   exact command alone exactly once after every routed edit is observed.
+- The sealed terminal lock must exactly match the Packet's mutation routes and
+  `V1`. A successful `V1` leaves zero tool calls: answer immediately without a
+  status, diff, check, or other command.
 - One provider attempt is claim-eligible. Retries require a new benchmark run.
 - Stop on success. After an exact-frame mismatch or failed `V1`, mark the fast
   path failed before recovering normally.

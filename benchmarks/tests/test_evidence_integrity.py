@@ -1181,7 +1181,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
             artifacts = handoff.capsule_snapshot_artifacts(
                 document["fixture_snapshot"][case.id]
             )
-            _, _, _, sources, _ = module._parse_capsule(
+            _, _, _, sources, _, _ = module._parse_capsule(
                 artifacts["capsule"].encode("utf-8")
             )
             layers_frame = next(

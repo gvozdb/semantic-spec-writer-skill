@@ -168,7 +168,7 @@ def _capsule_source_hashes(
 ) -> dict[str, str]:
     """Derive routed-source provenance only from validated sealed frames."""
 
-    _, _, _, sources, _ = capsule_module._parse_capsule(capsule)
+    _, _, _, sources, _, _ = capsule_module._parse_capsule(capsule)
     hashes: dict[str, str] = {}
     for descriptor, payload in sources:
         capsule_module._validate_source_descriptor(descriptor)
@@ -216,7 +216,7 @@ def _check_capsule_snapshot(
     ):
         detail = "; ".join(str(item) for item in errors) or "invalid capsule metadata"
         raise RuntimeError(f"{case.id}: Capsule v5 validation failed: {detail}")
-    _, _, _, sources, seal = capsule_module._parse_capsule(capsule)
+    _, _, _, sources, _, seal = capsule_module._parse_capsule(capsule)
 
     # Recompute every frame directly from the captured workspace bytes.  This
     # independently binds full-file and ranged routes, descriptor metadata, and
@@ -465,12 +465,15 @@ def execution_prompt(
     comparison: ComparisonConfig | str | None = None,
 ) -> str:
     config = comparison_config(comparison)
-    gate = (
-        context_capsule_module().CAPSULE_CONTROL
-        if config == CAPSULE_V5 and variant == config.primary_candidate
-        else None
-    )
-    return core.benchmark_prompt(specification, execution_gate=gate)
+    if config == CAPSULE_V5 and variant == config.primary_candidate:
+        capsule = context_capsule_module()
+        prompt = core.benchmark_prompt(
+            specification,
+            execution_gate=capsule.CAPSULE_CONTROL,
+            require_syntax_check=False,
+        )
+        return f"{prompt.rstrip()}\n\n{capsule.CAPSULE_TERMINAL_PROFILE}\n"
+    return core.benchmark_prompt(specification)
 
 
 def case_snapshot(
@@ -734,7 +737,7 @@ def create_document(
         else core.git_commit()
     )
     document = HandoffRunDocument({
-        "schema_version": 2 if config == CAPSULE_V5 else 1,
+        "schema_version": 3 if config == CAPSULE_V5 else 1,
         "kind": config.kind,
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "created_at": datetime.now(UTC).isoformat(),
@@ -767,6 +770,9 @@ def create_document(
         "results": [],
     }, starter_snapshots, grading_snapshots, captured_artifacts)
     if config == CAPSULE_V5:
+        document["execution_profile"] = (
+            context_capsule_module().CAPSULE_EXECUTION_PROFILE
+        )
         document["code_revision"] = code_revision
     for field, version in config.versions:
         document[field] = version
@@ -1838,7 +1844,12 @@ def report_run_is_credible(
             and document.get("kind") != config.kind
         )
         or any(document.get(field) != version for field, version in config.versions)
-        or (config == CAPSULE_V5 and document.get("schema_version") != 2)
+        or (config == CAPSULE_V5 and document.get("schema_version") != 3)
+        or (
+            config == CAPSULE_V5
+            and document.get("execution_profile")
+            != context_capsule_module().CAPSULE_EXECUTION_PROFILE
+        )
         or (config == CAPSULE_V5 and document.get("full_corpus") is not True)
         or not isinstance(snapshots, dict)
         or set(snapshots) != corpus_ids
@@ -2650,6 +2661,7 @@ def capsule_v5_report(document: dict[str, Any]) -> str:
         f"- Repetitions: {document['repetitions']}",
         "- Packet version: 3",
         "- Capsule version: 5",
+        f"- Execution profile: `{document.get('execution_profile', 'unrecorded')}`",
         f"- Telemetry attestation: `{document.get('telemetry_attestation', 'none')}`",
         "",
     ]
@@ -2799,6 +2811,7 @@ def capsule_v5_report(document: dict[str, Any]) -> str:
         "- Pre-edit classification is claim-eligible only when file-change event paths confirm a routed or target edit; missing or pathless events fail closed.",
         "- The reported fixture-cluster interval bootstraps per-fixture median reductions; it is not an interval for the displayed all-run aggregate reduction.",
         "- Capsule v5 embeds Packet v3 and its routed source snapshot; this comparison excludes authoring cost and reuse break-even.",
+        "- Static Capsule size excludes the host execution-profile wrapper; measured model usage includes the complete rendered prompt.",
         "- Hidden tests and hidden expected outputs stay outside the solution process; visible smoke assertions are restored from immutable fixtures for every arm.",
         "- Results apply only to the recorded model, reasoning effort, repository shapes, and cache behavior.",
         "",

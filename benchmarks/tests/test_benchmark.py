@@ -23,6 +23,9 @@ LIFECYCLE = ROOT / "benchmarks" / "lifecycle.py"
 CONTEXT = ROOT / "benchmarks" / "context.py"
 HANDOFF = ROOT / "benchmarks" / "handoff.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "benchmark.yml"
+PACKET_PROMPT_GOLDEN_SHA256 = (
+    "a2d0da50b38e8e1b622347421e8fbbce650f2ee8c2fe48649635b9bf5ab93d46"
+)
 sys.path.insert(0, str(ROOT / "benchmarks"))
 import benchmark as benchmark_module
 CONVERSION_CHECK = (
@@ -884,7 +887,7 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertTrue(checked["valid"], checked)
             self.assertEqual(checked["version"], 5)
             self.assertEqual(checked["source_count"], 3)
-            _, _, embedded, _, _ = capsule_module._parse_capsule(first)
+            _, _, embedded, _, terminal, _ = capsule_module._parse_capsule(first)
             self.assertEqual(
                 capsule_module.packet_checker.parse_execution_policies(
                     embedded.decode("utf-8")
@@ -896,7 +899,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 first,
             )
             self.assertIn(
-                b'"edit_strategy":"single_atomic_file_change"',
+                b'"edit_strategy":"single_bundled_file_change"',
                 first,
             )
             self.assertIn(b'"pre_edit_read_budget":0', first)
@@ -911,6 +914,16 @@ class BenchmarkCliTest(unittest.TestCase):
                 first,
             )
             self.assertIn(b'"role":"current_pre_edit_source"', first)
+            self.assertEqual(
+                terminal["on_v1_pass"],
+                "FINAL_ANSWER_NOW_NO_MORE_TOOLS",
+            )
+            self.assertEqual(terminal["tool_call_budget"], 2)
+            self.assertEqual(
+                terminal["step_2"]["command"],
+                "python3 -m unittest -q test_smoke.py",
+            )
+            self.assertIn(capsule_module.TERMINAL_STOP_LINE, first)
             self.assertIn(
                 b'"do":["first layer containing name from request>tenant>global else '
                 b'default; null stops fallback; return exactly '
@@ -942,6 +955,17 @@ class BenchmarkCliTest(unittest.TestCase):
             "a passing early V1 fails the fast path",
             prompt,
         )
+        self.assertNotIn(
+            "Finish only after checking the implementation for syntax errors",
+            prompt,
+        )
+        self.assertTrue(
+            prompt.rstrip().endswith(capsule_module.CAPSULE_TERMINAL_PROFILE),
+        )
+        self.assertGreater(
+            prompt.rfind("CAPSULE-TERMINAL/1"),
+            prompt.rfind("--- END SPECIFICATION ---"),
+        )
         self.assertLess(
             prompt.index("Capsule execution gate:"),
             prompt.index("--- BEGIN SPECIFICATION ---"),
@@ -950,10 +974,21 @@ class BenchmarkCliTest(unittest.TestCase):
             "Capsule execution gate:",
             handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
         )
-        self.assertEqual(
-            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
-            benchmark_module.benchmark_prompt("opaque"),
+        packet_prompt = handoff.execution_prompt(
+            "opaque",
+            "packet",
+            handoff.CAPSULE_V5,
         )
+        self.assertEqual(packet_prompt, benchmark_module.benchmark_prompt("opaque"))
+        self.assertEqual(
+            hashlib.sha256(packet_prompt.encode("utf-8")).hexdigest(),
+            PACKET_PROMPT_GOLDEN_SHA256,
+        )
+        with self.assertRaisesRegex(ValueError, "only by an execution gate"):
+            benchmark_module.benchmark_prompt(
+                "opaque",
+                require_syntax_check=False,
+            )
 
     def test_capsule_routed_edit_progress_requires_every_edit_target(self) -> None:
         handoff = load_module("benchmark_handoff_capsule_progress", HANDOFF)
@@ -2424,9 +2459,10 @@ class BenchmarkCliTest(unittest.TestCase):
                         "error": None,
                     })
         document = {
-            "schema_version": 2,
+            "schema_version": 3,
             "kind": "semantic-context-capsule-comparison",
             "comparison": "capsule-v5",
+            "execution_profile": "capsule-v5-terminal-1",
             "packet_version": 3,
             "capsule_version": 5,
             "run_id": "capsule-test",
@@ -2525,6 +2561,11 @@ class BenchmarkCliTest(unittest.TestCase):
             document = json.loads(result_path.read_text(encoding="utf-8"))
             self.assertEqual(document["kind"], "semantic-context-capsule-comparison")
             self.assertEqual(document["comparison"], "capsule-v5")
+            self.assertEqual(document["schema_version"], 3)
+            self.assertEqual(
+                document["execution_profile"],
+                "capsule-v5-terminal-1",
+            )
             self.assertEqual(document["capsule_version"], 5)
             self.assertEqual(document["variants"], ["packet", "capsule"])
             self.assertEqual(len(document["results"]), 6)
@@ -2586,6 +2627,15 @@ class BenchmarkCliTest(unittest.TestCase):
         handoff = load_module("benchmark_handoff_capsule_provenance", HANDOFF)
         cases, document, results = self._capsule_credible_handoff_document(handoff)
         self.assertTrue(handoff.report_run_is_credible(document, results))
+
+        forged_profile = json.loads(json.dumps(document))
+        forged_profile["execution_profile"] = "capsule-v5-terminal-0"
+        self.assertFalse(
+            handoff.report_run_is_credible(
+                forged_profile,
+                forged_profile["results"],
+            )
+        )
 
         forged = json.loads(json.dumps(document))
         forged["results"][0]["provenance"]["capsule_sha256"] = "0" * 64

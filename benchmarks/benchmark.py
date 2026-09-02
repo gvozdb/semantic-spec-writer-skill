@@ -3255,23 +3255,35 @@ def safe_workspace(
     return workspace
 
 
-def benchmark_prompt(spec: str, *, execution_gate: str | None = None) -> str:
+def benchmark_prompt(
+    spec: str,
+    *,
+    execution_gate: str | None = None,
+    require_syntax_check: bool = True,
+) -> str:
     normalized_gate = None
     if execution_gate is not None:
         normalized_gate = execution_gate.strip()
         if not normalized_gate:
             raise ValueError("execution gate must not be empty")
+    if not require_syntax_check and normalized_gate is None:
+        raise ValueError("syntax check can be replaced only by an execution gate")
     gate = (
         f"\nCapsule execution gate:\n{normalized_gate}\n"
         if normalized_gate is not None
         else " "
+    )
+    finish = (
+        "Finish only after checking the implementation for syntax errors.\n\n"
+        if require_syntax_check
+        else "\n"
     )
     return (
         "Implement the specification below in the current workspace.\n"
         "Keep changes scoped to the requested behavior. Do not access files outside "
         "the workspace. Do not use network access."
         f"{gate}"
-        "Finish only after checking the implementation for syntax errors.\n\n"
+        f"{finish}"
         "--- BEGIN SPECIFICATION ---\n"
         f"{spec.rstrip()}\n"
         "--- END SPECIFICATION ---\n"

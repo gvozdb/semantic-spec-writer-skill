@@ -24,12 +24,15 @@ CAPSULE_SCRIPT = (
 )
 FIXTURE = ROOT / "benchmarks" / "handoff-cases" / "tenant-settings"
 EXPECTED_CAPSULE_SHA256 = (
-    "60b79e7b646c7f09f18368562412e44b1ca37ff5589ad00839f4e8474407ad29"
+    "780eb65c017c6909a6fd2a35039ed1ee235f494c83e8c68c442a818c4dd89788"
+)
+EXPECTED_LEGACY_CAPSULE_SHA256 = (
+    "7faadb7f9a318e11f6b16711d10a9deb964da8844c73c7626d3e0613a9bfce04"
 )
 FIXTURE_CAPSULE_SHA256 = {
-    "refund-ledger": "363fb82ffa683368e49bdc5970ea0c0c5a8e5ea68ab0a97c4548cff8c17d6885",
-    "tenant-settings": "60b79e7b646c7f09f18368562412e44b1ca37ff5589ad00839f4e8474407ad29",
-    "webhook-dispatch": "e4dde650d64ddfd883f482f56edf00611d1c4a076441c71db8411b0094c9dd58",
+    "refund-ledger": "1870d2adfe6a300d4fbc47692716447de0c43f012d4722078ddbd35206e083e9",
+    "tenant-settings": "780eb65c017c6909a6fd2a35039ed1ee235f494c83e8c68c442a818c4dd89788",
+    "webhook-dispatch": "c0a82bf8d52a77319cf7359fd96b624c4b8eedebfc1c988197d545093e973bcc",
 }
 
 
@@ -60,7 +63,7 @@ class CapsuleSecurityTest(unittest.TestCase):
     def _reseal_capsule_for_packet(self, capsule: bytes, packet_text: str) -> bytes:
         """Return a structurally valid capsule bound to ``packet_text`` for checks."""
 
-        header, _, _, sources, _ = self.capsule._parse_capsule(capsule)
+        header, _, _, sources, terminal, _ = self.capsule._parse_capsule(capsule)
         header = dict(header)
         packet_bytes = packet_text.encode("utf-8")
         header["packet_sha256"] = hashlib.sha256(packet_bytes).hexdigest()
@@ -76,12 +79,13 @@ class CapsuleSecurityTest(unittest.TestCase):
         body.extend(self.capsule._frame(packet_descriptor, embedded_packet))
         for descriptor, payload in sources:
             body.extend(self.capsule._frame(descriptor, payload))
+        body.extend(self.capsule._terminal_block(terminal))
         body.extend(self.capsule._seal_line(self.capsule._sha256(body)))
         return bytes(body)
 
     def _legacy_capsule(self) -> bytes:
         current = self.capsule.build_capsule(self.repo, self.packet)
-        header, _, embedded, sources, _ = self.capsule._parse_capsule(current)
+        header, _, embedded, sources, _, _ = self.capsule._parse_capsule(current)
         header = dict(header)
         header["version"] = self.capsule.LEGACY_CAPSULE_VERSION
         header["protocol"] = self.capsule.LEGACY_CAPSULE_PROTOCOL
@@ -112,6 +116,41 @@ class CapsuleSecurityTest(unittest.TestCase):
             body.extend(self.capsule._frame(legacy_descriptor, payload))
         body.extend(self.capsule._seal_line(self.capsule._sha256(body)))
         return bytes(body)
+
+    def _reseal_capsule_with_terminal(
+        self,
+        capsule: bytes,
+        terminal: dict[str, object],
+    ) -> bytes:
+        header, packet_descriptor, embedded, sources, _, _ = (
+            self.capsule._parse_capsule(capsule)
+        )
+        body = bytearray(self.capsule.MAGIC)
+        body.extend(self.capsule.EXECUTE_LINE)
+        body.extend(
+            self.capsule.HEADER_PREFIX
+            + self.capsule._canonical_json(header)
+            + b"\n"
+        )
+        body.extend(self.capsule._frame(packet_descriptor, embedded))
+        for descriptor, payload in sources:
+            body.extend(self.capsule._frame(descriptor, payload))
+        body.extend(self.capsule._terminal_block(terminal))
+        body.extend(self.capsule._seal_line(self.capsule._sha256(body)))
+        return bytes(body)
+
+    def _replace_terminal_tail_and_reseal(
+        self,
+        capsule: bytes,
+        original: bytes,
+        replacement: bytes,
+    ) -> bytes:
+        seal_offset = capsule.rfind(self.capsule.SEAL_PREFIX)
+        self.assertGreater(seal_offset, 0)
+        body = capsule[:seal_offset]
+        self.assertEqual(body.count(original), 1)
+        body = body.replace(original, replacement, 1)
+        return body + self.capsule._seal_line(self.capsule._sha256(body))
 
     def test_stable_build_check_and_publication_are_deterministic(self) -> None:
         first = self.capsule.build_capsule(self.repo, self.packet)
@@ -169,6 +208,10 @@ class CapsuleSecurityTest(unittest.TestCase):
         legacy = self._legacy_capsule()
         self.assertTrue(legacy.startswith(self.capsule.LEGACY_MAGIC))
         self.assertNotIn(self.capsule.EXECUTE_LINE, legacy)
+        self.assertEqual(
+            hashlib.sha256(legacy).hexdigest(),
+            EXPECTED_LEGACY_CAPSULE_SHA256,
+        )
 
         checked = self.capsule.check_capsule(
             self.repo,
@@ -199,6 +242,114 @@ class CapsuleSecurityTest(unittest.TestCase):
                     hashlib.sha256(capsule).hexdigest(),
                     expected_sha256,
                 )
+
+    def test_terminal_lock_is_last_sealed_instruction_and_packet_derived(self) -> None:
+        capsule = self.capsule.build_capsule(self.repo, self.packet)
+        _, _, _, _, terminal, _ = self.capsule._parse_capsule(capsule)
+
+        self.assertEqual(terminal["kind"], "capsule_v5_execution_lock")
+        self.assertEqual(terminal["tool_call_budget"], 2)
+        self.assertEqual(
+            terminal["step_1"]["paths"],
+            [
+                "settings/layers.py",
+                "settings/coercion.py",
+                "settings/service.py",
+            ],
+        )
+        self.assertEqual(
+            terminal["step_2"],
+            {
+                "command": "python3 -m unittest -q test_smoke.py",
+                "count": 1,
+                "name": "V1",
+                "tool": "command_execution",
+            },
+        )
+        self.assertGreater(
+            capsule.rfind(self.capsule.TERMINAL_PREFIX),
+            capsule.rfind(self.capsule.FRAME_PREFIX),
+        )
+        self.assertGreater(
+            capsule.rfind(self.capsule.TERMINAL_STOP_LINE),
+            capsule.rfind(self.capsule.TERMINAL_PREFIX),
+        )
+        self.assertGreater(
+            capsule.rfind(self.capsule.SEAL_PREFIX),
+            capsule.rfind(self.capsule.TERMINAL_STOP_LINE),
+        )
+
+    def test_resealed_terminal_lock_cannot_change_v1_or_stop_state(self) -> None:
+        capsule = self.capsule.build_capsule(self.repo, self.packet)
+        _, _, _, _, terminal, _ = self.capsule._parse_capsule(capsule)
+
+        variants = {
+            "different-command": ("step_2", "command", "python3 -m unittest -q"),
+            "nonterminal-pass": ("on_v1_pass", None, "run_more_checks"),
+            "fractional-budget": ("tool_call_budget", None, 2.0),
+            "non-string-path": ("step_1", "paths", [{"path": "settings/layers.py"}]),
+        }
+        for name, (section, field, replacement) in variants.items():
+            with self.subTest(name=name):
+                changed = json.loads(json.dumps(terminal))
+                if field is None:
+                    changed[section] = replacement
+                else:
+                    changed[section][field] = replacement
+                resealed = self._reseal_capsule_with_terminal(capsule, changed)
+                checked = self.capsule.check_capsule(
+                    self.repo,
+                    resealed,
+                    packet=self.packet,
+                )
+                self.assertFalse(checked["valid"], checked)
+                self.assertIn("terminal lock", "\n".join(checked["errors"]))
+
+    def test_raw_malformed_terminal_tail_fails_closed(self) -> None:
+        capsule = self.capsule.build_capsule(self.repo, self.packet)
+        variants = {
+            "missing-separator": (
+                b"\n" + self.capsule.TERMINAL_PREFIX,
+                self.capsule.TERMINAL_PREFIX,
+                "terminal lock separator",
+            ),
+            "noncanonical-json": (
+                b"\n" + self.capsule.TERMINAL_PREFIX + b"{",
+                b"\n" + self.capsule.TERMINAL_PREFIX + b"{ ",
+                "not canonical",
+            ),
+            "bad-stop-line": (
+                self.capsule.TERMINAL_STOP_LINE,
+                b"@STOP V1_EXIT_0=RUN_MORE_TOOLS\n",
+                "terminal stop control",
+            ),
+        }
+        for name, (original, replacement, expected) in variants.items():
+            with self.subTest(name=name):
+                malformed = self._replace_terminal_tail_and_reseal(
+                    capsule,
+                    original,
+                    replacement,
+                )
+                checked = self.capsule.check_capsule(
+                    self.repo,
+                    malformed,
+                    packet=self.packet,
+                )
+                self.assertFalse(checked["valid"], checked)
+                self.assertIn(expected, "\n".join(checked["errors"]))
+
+    def test_capsule_rejects_packet_without_mutation_route(self) -> None:
+        packet = self.root / "read-only.spec.ctx"
+        packet.write_text(
+            self.packet.read_text(encoding="utf-8").replace("  edit:", "  read:"),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            self.capsule.CapsuleError,
+            "at least one edit or create route",
+        ):
+            self.capsule.build_capsule(self.repo, packet)
 
     def test_aggregate_capsule_limit_is_exact_and_bounds_every_input_form(self) -> None:
         capsule = self.capsule.build_capsule(self.repo, self.packet)
@@ -638,7 +789,7 @@ class CapsuleSecurityTest(unittest.TestCase):
         first = self.capsule.build_capsule(self.repo, packet)
         second = self.capsule.build_capsule(self.repo, packet)
         self.assertEqual(first, second)
-        _, _, embedded, _, _ = self.capsule._parse_capsule(first)
+        _, _, embedded, _, _, _ = self.capsule._parse_capsule(first)
         embedded_text = embedded.decode("utf-8")
         self.assertEqual(
             self.capsule.packet_checker.parse_execution_policies(embedded_text),
