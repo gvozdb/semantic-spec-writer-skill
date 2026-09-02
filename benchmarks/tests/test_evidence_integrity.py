@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -375,6 +376,12 @@ class EvidenceIntegrityTest(unittest.TestCase):
         ):
             specification = artifacts[(case.id, variant)]
             snapshot = document["fixture_snapshot"][case.id]
+            is_capsule = variant == config.primary_candidate
+            command = (
+                "/bin/bash -lc "
+                + shlex.quote(str(case.manifest["verification_command"]))
+            )
+            command_metadata = core.text_metadata(command)
             results.append({
                 "case": case.id,
                 "pair_id": f"{case.id}:r{repetition}",
@@ -392,31 +399,51 @@ class EvidenceIntegrityTest(unittest.TestCase):
                     "return_code": 0,
                     "duration_seconds": 1.0,
                     "usage": {
-                        "input_tokens": 100,
-                        "uncached_input_tokens": 100,
-                        "output_tokens": 10,
+                        "input_tokens": 80 if is_capsule else 100,
+                        "uncached_input_tokens": 80 if is_capsule else 100,
+                        "output_tokens": 8 if is_capsule else 10,
                     },
-                    "tool_calls": {"command_execution": 1},
-                    "tool_call_total": 1,
+                    "tool_calls": {
+                        "command_execution": 1,
+                        "file_change": 1,
+                    },
+                    "tool_call_total": 2,
                     "event_errors": [],
                     "command_categories": {
                         "discovery": 0,
                         "read": 0,
-                        "verify": 0,
+                        "verify": 1,
                     },
                     "pre_edit_command_categories": {
                         "discovery": 0,
                         "read": 0,
                         "verify": 0,
                     },
+                    "pre_edit_command_executions": 0,
+                    "declared_verification_executions": 1,
+                    "pre_edit_declared_verification_executions": 0,
                     "pre_edit_telemetry": {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "status": "routed_edit_observed",
                         "target_count": 1,
+                        "observed_target_count": 1,
                         "file_change_events": 1,
                         "unclassified_file_change_events": 0,
                         "substantive_file_change_events": 1,
                     },
+                    "command_log": [{
+                        "categories": {
+                            "discovery": False,
+                            "read": False,
+                            "verify": True,
+                        },
+                        "command_bytes": command_metadata["bytes"],
+                        "command_sha256": command_metadata["sha256"],
+                        "exit_code": 0,
+                        "pre_edit": False,
+                        "declared_verification": True,
+                    }],
+                    "attempt_count": 1,
                 },
                 "verification": {
                     "command_metadata": core.text_metadata(
@@ -559,8 +586,9 @@ class EvidenceIntegrityTest(unittest.TestCase):
             "command_sha256": core.sha256_bytes(b"cat private"),
             "exit_code": 0,
             "pre_edit": True,
+            "declared_verification": False,
         }]
-        self.assertTrue(
+        self.assertFalse(
             handoff.capsule_report_is_credible(
                 redacted_command_log,
                 redacted_command_log["results"],
@@ -609,6 +637,17 @@ class EvidenceIntegrityTest(unittest.TestCase):
             lambda result: result["provider"]["tool_calls"].__setitem__(
                 "private_tool",
                 1,
+            ),
+        )
+        assert_rejected(
+            "multiple provider attempts",
+            lambda result: result["provider"].__setitem__("attempt_count", 2),
+        )
+        assert_rejected(
+            "forged declared verification count",
+            lambda result: result["provider"].__setitem__(
+                "declared_verification_executions",
+                2,
             ),
         )
         assert_rejected(

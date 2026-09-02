@@ -106,13 +106,13 @@ confidence interval crossed zero.
 
 Capsule v5 embeds a validated Packet v3 and its exact routed source snapshot.
 Its sealed control identifies source frames as current pre-edit data, rejects a
-no-edit outcome, and permits at most one bundled routed read before the edit.
-The declared verification runs once after a substantive routed change. The
+no-edit outcome, and requires every routed edit before any repository read or
+command. The exact declared verification then runs alone exactly once. The
 two-arm harness compares Capsule v5 directly with Packet v3, securely compares
-every routed post-state with the captured starter, and fails no-edit or partial
-edit outcomes even if a check exits zero. It reports behavior, provider
-telemetry, and byte-auditable static overhead. Capsule benchmark numbers are
-published only in
+every routed post-state with the captured starter, and fails no-edit, partial
+edit, pre-edit command, substituted verification, or multi-attempt outcomes. It
+reports behavior, provider telemetry, and byte-auditable static overhead.
+Capsule benchmark numbers are published only in
 a separate release artifact after the current result and exact rendered report
 pass the isolated release credibility validator. That gate runs with Python
 `-I` from the launcher's exact `HEAD` Git blob, then attests the live launcher

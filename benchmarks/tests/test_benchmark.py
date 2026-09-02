@@ -6,6 +6,7 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -891,9 +892,10 @@ class BenchmarkCliTest(unittest.TestCase):
                 [capsule_module.CAPSULE_EXECUTION],
             )
             self.assertIn(
-                b'"first_action":"file_change_or_one_routed_read"',
+                b'"first_action":"file_change"',
                 first,
             )
+            self.assertIn(b'"pre_edit_read_budget":0', first)
             self.assertIn(b'"no_edit":"failure"', first)
             self.assertIn(b'"pre_edit_verification":"forbidden"', first)
             self.assertEqual(
@@ -927,7 +929,7 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertIn(capsule_module.CAPSULE_CONTROL, prompt)
         self.assertIn(
-            "A passing pre-edit V1 is failure, not completion",
+            "A passing early V1 is failure, not completion",
             prompt,
         )
         self.assertLess(
@@ -938,11 +940,23 @@ class BenchmarkCliTest(unittest.TestCase):
             "Capsule execution gate:",
             handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
         )
+        self.assertEqual(
+            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
+            benchmark_module.benchmark_prompt("opaque"),
+        )
 
     def test_capsule_routed_edit_progress_requires_every_edit_target(self) -> None:
         handoff = load_module("benchmark_handoff_capsule_progress", HANDOFF)
         source = HANDOFF_CASES / "tenant-settings"
         packet = (source / "packet.spec.ctx").read_text(encoding="utf-8")
+        self.assertEqual(
+            handoff.routed_edit_paths(packet),
+            (
+                "settings/coercion.py",
+                "settings/layers.py",
+                "settings/service.py",
+            ),
+        )
         starter = benchmark_module.snapshot_fixture_tree(source / "starter")
         with tempfile.TemporaryDirectory(prefix="capsule-progress-") as directory:
             workspace = Path(directory) / "workspace"
@@ -996,14 +1010,31 @@ class BenchmarkCliTest(unittest.TestCase):
                     "verify": 1,
                 },
                 "pre_edit_command_executions": 1,
+                "declared_verification_executions": 1,
+                "pre_edit_declared_verification_executions": 1,
                 "pre_edit_telemetry": {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "status": "no_routed_edit_observed",
-                    "target_count": 4,
+                    "target_count": 3,
+                    "observed_target_count": 0,
                     "file_change_events": 0,
                     "unclassified_file_change_events": 0,
                     "substantive_file_change_events": 0,
                 },
+                "command_log": [{
+                    "categories": {
+                        "discovery": False,
+                        "read": False,
+                        "verify": True,
+                    },
+                    "command": (
+                        "/bin/bash -lc "
+                        "'python3 -m unittest -q test_smoke.py'"
+                    ),
+                    "exit_code": 0,
+                    "pre_edit": True,
+                    "declared_verification": True,
+                }],
             }
 
         def passing_grader(_case, _workspace, **kwargs):
@@ -1062,7 +1093,11 @@ class BenchmarkCliTest(unittest.TestCase):
             )
             self.assertEqual(
                 capsule["error"]["codes"],
-                ["capsule_no_routed_edit", "capsule_pre_edit_verification"],
+                [
+                    "capsule_no_routed_edit",
+                    "capsule_pre_edit_command",
+                    "capsule_pre_edit_verification",
+                ],
             )
             self.assertFalse(capsule["grade"]["task_success"])
 
@@ -1592,12 +1627,79 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(
             parsed["pre_edit_telemetry"],
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "status": "routed_edit_observed",
                 "target_count": 1,
+                "observed_target_count": 1,
                 "file_change_events": 2,
                 "unclassified_file_change_events": 0,
                 "substantive_file_change_events": 1,
+            },
+        )
+
+    def test_codex_event_parser_requires_all_routes_before_declared_v1(self) -> None:
+        command = "/bin/bash -lc 'python3 -m unittest -q test_smoke.py'"
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "first.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": command,
+                    "exit_code": 0,
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "second.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": command,
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("first.py", "second.py"),
+            declared_verification_command="python3 -m unittest -q test_smoke.py",
+        )
+
+        self.assertEqual(
+            [entry["pre_edit"] for entry in parsed["command_log"]],
+            [True, False],
+        )
+        self.assertTrue(
+            all(entry["declared_verification"] for entry in parsed["command_log"])
+        )
+        self.assertEqual(parsed["declared_verification_executions"], 2)
+        self.assertEqual(
+            parsed["pre_edit_declared_verification_executions"],
+            1,
+        )
+        self.assertEqual(
+            parsed["pre_edit_telemetry"],
+            {
+                "schema_version": 3,
+                "status": "routed_edit_observed",
+                "target_count": 2,
+                "observed_target_count": 2,
+                "file_change_events": 2,
+                "unclassified_file_change_events": 0,
+                "substantive_file_change_events": 2,
             },
         )
 
@@ -2217,6 +2319,11 @@ class BenchmarkCliTest(unittest.TestCase):
                     is_capsule = variant == "capsule"
                     input_tokens = 90 if is_capsule else 100
                     uncached_input_tokens = 50 if is_capsule else 100
+                    command = (
+                        "/bin/bash -lc "
+                        + shlex.quote(str(case.manifest["verification_command"]))
+                    )
+                    command_metadata = benchmark_module.text_metadata(command)
                     results.append({
                         "case": case.id,
                         "pair_id": f"{case.id}:r{repetition}",
@@ -2235,7 +2342,10 @@ class BenchmarkCliTest(unittest.TestCase):
                             "event_errors": [],
                             "duration_seconds": 5.0 if is_capsule else 10.0,
                             "tool_call_total": 2,
-                            "tool_calls": {"command_execution": 1},
+                            "tool_calls": {
+                                "command_execution": 1,
+                                "file_change": 1,
+                            },
                             "command_categories": {
                                 "discovery": 0,
                                 "read": 0,
@@ -2246,14 +2356,31 @@ class BenchmarkCliTest(unittest.TestCase):
                                 "read": 0,
                                 "verify": 0,
                             },
+                            "pre_edit_command_executions": 0,
+                            "declared_verification_executions": 1,
+                            "pre_edit_declared_verification_executions": 0,
                             "pre_edit_telemetry": {
-                                "schema_version": 2,
+                                "schema_version": 3,
                                 "status": "routed_edit_observed",
                                 "target_count": 1,
+                                "observed_target_count": 1,
                                 "file_change_events": 1,
                                 "unclassified_file_change_events": 0,
                                 "substantive_file_change_events": 1,
-                            } if is_capsule else None,
+                            },
+                            "command_log": [{
+                                "categories": {
+                                    "discovery": False,
+                                    "read": False,
+                                    "verify": True,
+                                },
+                                "command_bytes": command_metadata["bytes"],
+                                "command_sha256": command_metadata["sha256"],
+                                "exit_code": 0,
+                                "pre_edit": False,
+                                "declared_verification": True,
+                            }],
+                            "attempt_count": 1,
                             "usage": {
                                 "input_tokens": input_tokens,
                                 "uncached_input_tokens": uncached_input_tokens,
@@ -2261,18 +2388,27 @@ class BenchmarkCliTest(unittest.TestCase):
                             },
                         },
                         "verification": {
-                            "command": case.manifest["verification_command"],
+                            "command_metadata": benchmark_module.text_metadata(
+                                case.manifest["verification_command"]
+                            ),
                             "fixture_sha256": snapshot[
                                 "verification_fixture_sha256"
                             ],
                             "return_code": 0,
                         },
                         "grade": {
-                            "passed": 1,
-                            "total": 1,
-                            "acceptance_passed": 1,
-                            "acceptance_total": 1,
+                            "passed": snapshot["grading"]["test_total"],
+                            "total": snapshot["grading"]["test_total"],
+                            "pass_rate": 1.0,
+                            "acceptance_passed": snapshot["grading"][
+                                "acceptance_total"
+                            ],
+                            "acceptance_total": snapshot["grading"][
+                                "acceptance_total"
+                            ],
+                            "acceptance_pass_rate": 1.0,
                             "task_success": True,
+                            "failures": [],
                         },
                         "error": None,
                     })
@@ -2516,45 +2652,72 @@ class BenchmarkCliTest(unittest.TestCase):
         _, document, results = self._capsule_credible_handoff_document(handoff)
         self.assertTrue(handoff.report_run_is_credible(document, results))
         report = handoff.report(document)
-        self.assertIn("cannot establish a product token-saving claim", report)
-        self.assertIn("not independently attested", report)
+        self.assertIn("supports a measured token-saving result", report)
+        self.assertIn("Provider telemetry remains self-reported", report)
+        self.assertNotIn("Non-publishable experimental smoke run", report)
         self.assertIn("Routed action gate: **9/9** Capsule v5 runs.", report)
 
+        def add_command(
+            target: dict[str, object],
+            category: str,
+            *,
+            pre_edit: bool,
+        ) -> None:
+            provider = next(
+                result
+                for result in target["results"]
+                if result["variant"] == "capsule"
+            )["provider"]
+            command = f"synthetic-{category}"
+            metadata = benchmark_module.text_metadata(command)
+            categories = {
+                "discovery": category == "discovery",
+                "read": category == "read",
+                "verify": category == "verify",
+            }
+            provider["command_log"].append({
+                "categories": categories,
+                "command_bytes": metadata["bytes"],
+                "command_sha256": metadata["sha256"],
+                "exit_code": 0,
+                "pre_edit": pre_edit,
+                "declared_verification": False,
+            })
+            provider["tool_calls"]["command_execution"] += 1
+            provider["tool_call_total"] += 1
+            provider["command_categories"][category] += 1
+            if pre_edit:
+                provider["pre_edit_command_executions"] += 1
+                provider["pre_edit_command_categories"][category] += 1
+
         recovery_read = json.loads(json.dumps(document))
-        next(
-            result
-            for result in recovery_read["results"]
-            if result["variant"] == "capsule"
-        )["provider"]["command_categories"]["read"] = 1
+        add_command(recovery_read, "read", pre_edit=False)
         self.assertNotIn("pre-edit command budget", handoff.report(recovery_read))
 
         discovery = json.loads(json.dumps(document))
-        next(
-            result
-            for result in discovery["results"]
-            if result["variant"] == "capsule"
-        )["provider"]["pre_edit_command_categories"]["discovery"] = 1
+        add_command(discovery, "discovery", pre_edit=True)
         discovery_report = handoff.report(discovery)
-        self.assertIn("cannot establish a product token-saving claim", discovery_report)
+        self.assertIn("cannot establish a publishable token-saving result", discovery_report)
         self.assertIn("classified pre-edit command budget", discovery_report)
+        self.assertIn(
+            "does not satisfy release claim gates",
+            "\n".join(
+                handoff.validate_capsule_release(
+                    discovery,
+                    discovery_report.encode("utf-8"),
+                )
+            ),
+        )
 
         over_budget = json.loads(json.dumps(document))
-        next(
-            result
-            for result in over_budget["results"]
-            if result["variant"] == "capsule"
-        )["provider"]["pre_edit_command_categories"]["read"] = 2
+        add_command(over_budget, "read", pre_edit=True)
         self.assertIn(
-            "cannot establish a product token-saving claim",
+            "cannot establish a publishable token-saving result",
             handoff.report(over_budget),
         )
 
         pre_edit_verification = json.loads(json.dumps(document))
-        next(
-            result
-            for result in pre_edit_verification["results"]
-            if result["variant"] == "capsule"
-        )["provider"]["pre_edit_command_categories"]["verify"] = 1
+        add_command(pre_edit_verification, "verify", pre_edit=True)
         self.assertIn(
             "classified pre-edit command budget",
             handoff.report(pre_edit_verification),
@@ -2579,13 +2742,16 @@ class BenchmarkCliTest(unittest.TestCase):
             for result in incomplete["results"]
             if result["variant"] == "packet" and result["repetition"] == 1
         )
-        failed["grade"].update({
+        failed["grade"] = handoff.core.redact_grade({
             "passed": 0,
+            "total": 1,
             "acceptance_passed": 0,
+            "acceptance_total": 1,
             "task_success": False,
+            "failures": ["synthetic quality failure"],
         })
         incomplete_report = handoff.report(incomplete)
-        self.assertIn("cannot establish a product token-saving claim", incomplete_report)
+        self.assertIn("cannot establish a publishable token-saving result", incomplete_report)
         self.assertIn(
             "only 8/9 Packet v3/Capsule v5 pairs were jointly successful",
             incomplete_report,

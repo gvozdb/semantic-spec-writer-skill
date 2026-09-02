@@ -243,14 +243,18 @@ python3 -B benchmarks/handoff.py report \
 
 The Capsule report distinguishes total discovery/read events from classified
 pre-edit events, measures combined input plus output tokens, and reports an
-input-only cache-price break-even without hardcoding provider prices. Provider
-telemetry and grades remain self-reported; a separate secure routed-file
-comparison makes no-edit and partial-edit candidate outcomes fail regardless of
-their reported status or verification exit. Git history is the publication trust
-boundary. Static overhead in the run report is byte-only, which is reproducible
-without an optional tokenizer package. Do not publish an exact tokenizer claim
-unless the result schema records and credibility-checks the encoding, package
-identity, per-arm counts, and aggregate.
+input-only cache-price break-even without hardcoding provider prices. A Capsule
+run is claim-eligible only when every routed edit precedes every command, the
+exact declared verification runs alone exactly once, and the provider attempt
+count is one. Provider telemetry and grades remain self-reported; a separate
+secure routed-file comparison makes no-edit and partial-edit outcomes fail
+regardless of reported status or verification exit. Publication also requires
+preserved quality, complete paired telemetry, and a positive total-token
+fixture-cluster confidence-interval lower bound. Git history is the publication
+trust boundary. Static overhead in the run report is byte-only, which is
+reproducible without an optional tokenizer package. Do not publish an exact
+tokenizer claim unless the result schema records and credibility-checks the
+encoding, package identity, per-arm counts, and aggregate.
 
 Capsule evidence is published separately from the clean code-stage commit. Use
 a fresh checkout or dedicated worktree with no ignored files, run the benchmark

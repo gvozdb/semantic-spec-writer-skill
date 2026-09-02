@@ -76,8 +76,12 @@ PROVIDER_TOOL_CALL_FIELDS = frozenset({
     "web_search",
 })
 PUBLIC_ERROR_CODES = frozenset({
+    "capsule_declared_verification_count",
     "capsule_incomplete_routed_edits",
     "capsule_no_routed_edit",
+    "capsule_pre_edit_command",
+    "capsule_pre_edit_discovery",
+    "capsule_pre_edit_read",
     "capsule_pre_edit_verification",
     "capsule_routed_edit_attestation_failed",
     "grader_exception",
@@ -425,6 +429,10 @@ def _redact_command_log(value: Any) -> list[dict[str, Any]]:
             redacted["exit_code"] = None
         if isinstance(record.get("pre_edit"), bool):
             redacted["pre_edit"] = record["pre_edit"]
+        if isinstance(record.get("declared_verification"), bool):
+            redacted["declared_verification"] = record[
+                "declared_verification"
+            ]
         records.append(redacted)
     return records
 
@@ -435,6 +443,7 @@ def _redact_pre_edit_telemetry(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     allowed_statuses = {
+        "incomplete_routed_edit_observed",
         "routed_edit_observed",
         "unavailable",
         "no_routed_edit_observed",
@@ -446,6 +455,7 @@ def _redact_pre_edit_telemetry(value: Any) -> dict[str, Any]:
     for field in (
         "schema_version",
         "target_count",
+        "observed_target_count",
         "file_change_events",
         "unclassified_file_change_events",
         "substantive_file_change_events",
@@ -518,6 +528,14 @@ def redact_provider_telemetry(provider: dict[str, Any]) -> dict[str, Any]:
         count = provider["pre_edit_command_executions"]
         if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
             redacted["pre_edit_command_executions"] = count
+    for field in (
+        "declared_verification_executions",
+        "pre_edit_declared_verification_executions",
+    ):
+        if field in provider:
+            count = provider[field]
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                redacted[field] = count
     if "pre_edit_telemetry" in provider:
         redacted["pre_edit_telemetry"] = _redact_pre_edit_telemetry(
             provider["pre_edit_telemetry"]
@@ -3237,20 +3255,22 @@ def safe_workspace(
 
 
 def benchmark_prompt(spec: str, *, execution_gate: str | None = None) -> str:
-    gate = ""
+    normalized_gate = None
     if execution_gate is not None:
         normalized_gate = execution_gate.strip()
         if not normalized_gate:
             raise ValueError("execution gate must not be empty")
-        gate = f"Capsule execution gate:\n{normalized_gate}\n\n"
+    gate = (
+        f"\nCapsule execution gate:\n{normalized_gate}\n"
+        if normalized_gate is not None
+        else " "
+    )
     return (
         "Implement the specification below in the current workspace.\n"
         "Keep changes scoped to the requested behavior. Do not access files outside "
-        "the workspace. Do not use network access.\n"
+        "the workspace. Do not use network access."
         f"{gate}"
-        "First make the requested implementation changes. Then check the edited "
-        "implementation for syntax errors. A passing check on the unchanged starter "
-        "is not completion.\n\n"
+        "Finish only after checking the implementation for syntax errors.\n\n"
         "--- BEGIN SPECIFICATION ---\n"
         f"{spec.rstrip()}\n"
         "--- END SPECIFICATION ---\n"
@@ -3416,11 +3436,29 @@ def _file_change_paths(
     return paths, True
 
 
+def _unwrapped_shell_command(command: str) -> str:
+    """Return the command body emitted by Codex's standard shell wrapper."""
+
+    stripped = command.strip()
+    try:
+        parts = shlex.split(stripped)
+    except ValueError:
+        return stripped
+    if (
+        len(parts) == 3
+        and Path(parts[0]).name in {"bash", "sh"}
+        and parts[1] in {"-c", "-lc"}
+    ):
+        return parts[2].strip()
+    return stripped
+
+
 def parse_codex_events(
     stdout: str,
     *,
     retain_sensitive_text: bool = False,
     substantive_edit_paths: Iterable[str] | None = None,
+    declared_verification_command: str | None = None,
     workspace: Path | None = None,
 ) -> dict[str, Any]:
     usage: dict[str, int] = {}
@@ -3431,12 +3469,21 @@ def parse_codex_events(
         name: 0 for name in COMMAND_CATEGORY_PATTERNS
     }
     pre_edit_command_executions = 0
+    declared_verification_executions = 0
+    pre_edit_declared_verification_executions = 0
+    declared_verification = (
+        declared_verification_command.strip()
+        if isinstance(declared_verification_command, str)
+        and declared_verification_command.strip()
+        else None
+    )
     target_paths = {
         normalized
         for value in substantive_edit_paths or ()
         if (normalized := _telemetry_relative_path(value, workspace)) is not None
     }
     pre_edit_active = True
+    observed_target_paths: set[str] = set()
     file_change_events = 0
     unclassified_file_change_events = 0
     substantive_file_change_events = 0
@@ -3483,9 +3530,15 @@ def parse_codex_events(
                             unclassified_file_change_events += 1
                         elif paths & target_paths:
                             substantive_file_change_events += 1
-                            pre_edit_active = False
+                            observed_target_paths.update(paths & target_paths)
+                            pre_edit_active = observed_target_paths != target_paths
                 elif item_type == "command_execution":
                     command = str(item.get("command", ""))
+                    is_declared_verification = bool(
+                        declared_verification is not None
+                        and _unwrapped_shell_command(command)
+                        == declared_verification
+                    )
                     categories = {
                         name: bool(pattern.search(command))
                         for name, pattern in COMMAND_CATEGORY_PATTERNS.items()
@@ -3497,9 +3550,14 @@ def parse_codex_events(
                         "command_sha256": sha256_bytes(command.encode("utf-8")),
                         "exit_code": item.get("exit_code"),
                         "pre_edit": pre_edit,
+                        "declared_verification": is_declared_verification,
                     })
                     if pre_edit:
                         pre_edit_command_executions += 1
+                    if is_declared_verification:
+                        declared_verification_executions += 1
+                        if pre_edit:
+                            pre_edit_declared_verification_executions += 1
                     for name in COMMAND_CATEGORY_PATTERNS:
                         matched = categories[name]
                         command_categories[name] += matched
@@ -3511,8 +3569,10 @@ def parse_codex_events(
         usage["uncached_input_tokens"] = max(
             usage.get("input_tokens", 0) - usage.get("cached_input_tokens", 0), 0
         )
-    if substantive_file_change_events:
+    if target_paths and observed_target_paths == target_paths:
         telemetry_status = "routed_edit_observed"
+    elif observed_target_paths:
+        telemetry_status = "incomplete_routed_edit_observed"
     elif unclassified_file_change_events or not target_paths:
         telemetry_status = "unavailable"
     else:
@@ -3525,10 +3585,15 @@ def parse_codex_events(
         "command_categories": command_categories,
         "pre_edit_command_categories": pre_edit_command_categories,
         "pre_edit_command_executions": pre_edit_command_executions,
+        "declared_verification_executions": declared_verification_executions,
+        "pre_edit_declared_verification_executions": (
+            pre_edit_declared_verification_executions
+        ),
         "pre_edit_telemetry": {
-            "schema_version": 2,
+            "schema_version": 3,
             "status": telemetry_status,
             "target_count": len(target_paths),
+            "observed_target_count": len(observed_target_paths),
             "file_change_events": file_change_events,
             "unclassified_file_change_events": unclassified_file_change_events,
             "substantive_file_change_events": substantive_file_change_events,
@@ -3584,6 +3649,7 @@ def run_codex(
     *,
     retain_sensitive_text: bool = False,
     substantive_edit_paths: Iterable[str] | None = None,
+    declared_verification_command: str | None = None,
 ) -> dict[str, Any]:
     command = [
         "codex",
@@ -3626,6 +3692,7 @@ def run_codex(
         stdout,
         retain_sensitive_text=retain_sensitive_text,
         substantive_edit_paths=substantive_edit_paths,
+        declared_verification_command=declared_verification_command,
         workspace=workspace,
     )
     parsed.update({

@@ -24,12 +24,12 @@ CAPSULE_SCRIPT = (
 )
 FIXTURE = ROOT / "benchmarks" / "handoff-cases" / "tenant-settings"
 EXPECTED_CAPSULE_SHA256 = (
-    "5312b75274ff7eecfa8bb97b9302479e95f447f9dbf6c697499549f288f5ae28"
+    "abb3965e6687033dbbb5f1a98650707ebd3a4a3922b542dcc2bee9c11350aa0d"
 )
 FIXTURE_CAPSULE_SHA256 = {
-    "refund-ledger": "a5c576b741c92d43936688fe87d27389ea81a131eda00a6f5ad5acbca356cdec",
-    "tenant-settings": "5312b75274ff7eecfa8bb97b9302479e95f447f9dbf6c697499549f288f5ae28",
-    "webhook-dispatch": "417eb95fdc4c86256a30b055d730d9823e52d4282fcf0441ab9809db893bbc5f",
+    "refund-ledger": "ef48e097d5a59762cc57fcdaae43747d133ee30ddc4d1acf3128b936ca243194",
+    "tenant-settings": "abb3965e6687033dbbb5f1a98650707ebd3a4a3922b542dcc2bee9c11350aa0d",
+    "webhook-dispatch": "39942796f73d745358fc290da26e8c2e5b12e1d7749fb745e7f1be623aa8bda0",
 }
 
 
@@ -176,6 +176,15 @@ class CapsuleSecurityTest(unittest.TestCase):
         )
         self.assertTrue(checked["valid"], checked)
         self.assertEqual(checked["version"], 4)
+
+        corrupted = legacy[:-1] + bytes([legacy[-1] ^ 1])
+        rejected = self.capsule.check_capsule(
+            self.repo,
+            corrupted,
+            packet=self.packet,
+        )
+        self.assertFalse(rejected["valid"], rejected)
+        self.assertEqual(rejected["version"], 4)
 
     def test_fixture_capsules_keep_exact_bytes(self) -> None:
         cases = ROOT / "benchmarks" / "handoff-cases"

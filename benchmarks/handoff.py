@@ -101,8 +101,12 @@ CAPSULE_V5 = ComparisonConfig(
 COMPARISONS = {config.name: config for config in (PACKET_V3, CAPSULE_V5)}
 ALL_VARIANTS = tuple((*VARIANTS, "capsule"))
 CAPSULE_ACTION_ERROR_CODES = frozenset({
+    "capsule_declared_verification_count",
     "capsule_incomplete_routed_edits",
     "capsule_no_routed_edit",
+    "capsule_pre_edit_command",
+    "capsule_pre_edit_discovery",
+    "capsule_pre_edit_read",
     "capsule_pre_edit_verification",
     "capsule_routed_edit_attestation_failed",
 })
@@ -607,25 +611,20 @@ def result_provenance(
     return provenance
 
 
-def routed_target_paths(
-    case: core.BenchmarkCase,
-    packet_text: str | None = None,
-) -> tuple[str, ...]:
-    """Return the Packet routes that make a file change substantive.
+def routed_edit_paths(packet_text: str) -> tuple[str, ...]:
+    """Return exactly the Packet edit/create routes for action telemetry.
 
-    Capsule pre-edit telemetry is meaningful only after the provider changes a
-    routed file (or the declared implementation entrypoint).  Keep this
-    runtime-only: route paths are deliberately not copied into the result
-    document, where they would be unnecessary provenance prose.
+    Read routes and a manifest entrypoint cannot satisfy the Capsule action gate.
+    Keep paths runtime-only: they are unnecessary provenance prose in results.
     """
 
-    paths = {str(case.manifest["entrypoint"])}
-    if packet_text is None:
-        packet_text = artifact_path(case, "packet").read_text(encoding="utf-8")
-    for target in context_capsule_module().packet_checker.parse_routes(packet_text):
-        relative_path = getattr(target, "relative_path", None)
-        if isinstance(relative_path, str) and relative_path:
-            paths.add(relative_path)
+    paths = {
+        target.relative_path
+        for target in context_capsule_module().packet_checker.parse_routes(
+            packet_text
+        )
+        if target.kind in {"edit", "create"}
+    }
     return tuple(sorted(paths))
 
 
@@ -889,14 +888,20 @@ def run(args: argparse.Namespace) -> Path:
                         args.reasoning_effort,
                         args.timeout_seconds,
                         substantive_edit_paths=(
-                            routed_target_paths(case, artifacts["packet"])
+                            routed_edit_paths(artifacts["packet"])
                             if config == CAPSULE_V5
                             else ()
+                        ),
+                        declared_verification_command=(
+                            str(case.manifest["verification_command"])
+                            if config == CAPSULE_V5
+                            else None
                         ),
                     )
                     if args.provider == "codex"
                     else core.run_mock(case, workspace)
                 )
+                provider["attempt_count"] = 1
                 provider_completed = True
             except subprocess.TimeoutExpired:
                 provider = failed_provider("provider timeout", args.timeout_seconds)
@@ -913,6 +918,11 @@ def run(args: argparse.Namespace) -> Path:
                 if provider.get("event_errors"):
                     run_errors.append("provider_event_error")
                 if config == CAPSULE_V5 and variant == config.primary_candidate:
+                    enforce_action_telemetry = bool(
+                        args.provider == "codex"
+                        or "pre_edit_telemetry" in provider
+                    )
+                    routed_edits_complete = False
                     try:
                         required_edits, completed_edits = routed_edit_progress(
                             workspace,
@@ -929,18 +939,78 @@ def run(args: argparse.Namespace) -> Path:
                         elif completed_edits != required_edits:
                             capsule_contract_failed = True
                             run_errors.append("capsule_incomplete_routed_edits")
-                    pre_edit_categories = provider.get(
-                        "pre_edit_command_categories",
-                        {},
-                    )
-                    pre_edit_verify = (
-                        pre_edit_categories.get("verify")
-                        if isinstance(pre_edit_categories, dict)
-                        else None
-                    )
-                    if isinstance(pre_edit_verify, int) and pre_edit_verify > 0:
+                        else:
+                            routed_edits_complete = True
+                    telemetry = provider.get("pre_edit_telemetry")
+                    if (
+                        routed_edits_complete
+                        and enforce_action_telemetry
+                        and not current_routed_edit_telemetry(telemetry)
+                    ):
                         capsule_contract_failed = True
-                        run_errors.append("capsule_pre_edit_verification")
+                        run_errors.append("capsule_routed_edit_attestation_failed")
+                    if enforce_action_telemetry:
+                        pre_edit_categories = provider.get(
+                            "pre_edit_command_categories",
+                            {},
+                        )
+                        pre_edit_commands = provider.get(
+                            "pre_edit_command_executions"
+                        )
+                        if (
+                            type(pre_edit_commands) is not int
+                            or pre_edit_commands < 0
+                        ):
+                            capsule_contract_failed = True
+                            run_errors.append(
+                                "capsule_routed_edit_attestation_failed"
+                            )
+                        elif pre_edit_commands > 0:
+                            capsule_contract_failed = True
+                            run_errors.append("capsule_pre_edit_command")
+                        for category, code in (
+                            ("discovery", "capsule_pre_edit_discovery"),
+                            ("read", "capsule_pre_edit_read"),
+                            ("verify", "capsule_pre_edit_verification"),
+                        ):
+                            count = (
+                                pre_edit_categories.get(category)
+                                if isinstance(pre_edit_categories, dict)
+                                else None
+                            )
+                            if type(count) is not int or count < 0:
+                                capsule_contract_failed = True
+                                run_errors.append(
+                                    "capsule_routed_edit_attestation_failed"
+                                )
+                            elif count > 0:
+                                capsule_contract_failed = True
+                                run_errors.append(code)
+                        declared_count = provider.get(
+                            "declared_verification_executions"
+                        )
+                        pre_edit_declared_count = provider.get(
+                            "pre_edit_declared_verification_executions"
+                        )
+                        if (
+                            type(declared_count) is not int
+                            or declared_count != 1
+                        ):
+                            capsule_contract_failed = True
+                            run_errors.append(
+                                "capsule_declared_verification_count"
+                            )
+                        if (
+                            type(pre_edit_declared_count) is not int
+                            or pre_edit_declared_count < 0
+                        ):
+                            capsule_contract_failed = True
+                            run_errors.append(
+                                "capsule_routed_edit_attestation_failed"
+                            )
+                        elif pre_edit_declared_count > 0:
+                            capsule_contract_failed = True
+                            run_errors.append("capsule_pre_edit_verification")
                 trusted = args.provider == "mock"
                 verification_failed = False
                 try:
@@ -1237,6 +1307,7 @@ _PRE_EDIT_TELEMETRY_FIELDS = frozenset({
     "schema_version",
     "status",
     "target_count",
+    "observed_target_count",
     "file_change_events",
     "unclassified_file_change_events",
     "substantive_file_change_events",
@@ -1250,6 +1321,8 @@ _PRIVACY_PROVIDER_FIELDS = frozenset({
     "command_categories",
     "pre_edit_command_categories",
     "pre_edit_command_executions",
+    "declared_verification_executions",
+    "pre_edit_declared_verification_executions",
     "pre_edit_telemetry",
     "command_log",
     "thread_id_metadata",
@@ -1267,8 +1340,13 @@ _REQUIRED_CAPSULE_PROVIDER_FIELDS = frozenset({
     "tool_call_total",
     "command_categories",
     "pre_edit_command_categories",
+    "pre_edit_command_executions",
+    "declared_verification_executions",
+    "pre_edit_declared_verification_executions",
     "pre_edit_telemetry",
+    "command_log",
     "event_errors",
+    "attempt_count",
 })
 _PROVIDER_METADATA_FIELDS = frozenset({
     "thread_id_metadata",
@@ -1282,6 +1360,7 @@ _COMMAND_LOG_FIELDS = frozenset({
     "command_sha256",
     "exit_code",
     "pre_edit",
+    "declared_verification",
 })
 _PRIVACY_VERIFICATION_FIELDS = frozenset({
     "command_metadata",
@@ -1378,39 +1457,70 @@ def current_privacy_redacted_provider(provider: Any) -> bool:
         not current_text_metadata(error) for error in errors
     ):
         return False
-    if "pre_edit_command_executions" in provider:
-        count = provider["pre_edit_command_executions"]
+    for field in (
+        "pre_edit_command_executions",
+        "declared_verification_executions",
+        "pre_edit_declared_verification_executions",
+    ):
+        count = provider[field]
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             return False
-    if "attempt_count" in provider:
-        count = provider["attempt_count"]
-        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-            return False
-    if "command_log" in provider:
-        command_log = provider["command_log"]
-        if not isinstance(command_log, list):
-            return False
-        for record in command_log:
-            if (
-                not isinstance(record, dict)
-                or set(record) != _COMMAND_LOG_FIELDS
-                or not _current_boolean_map(record.get("categories"), category_fields)
-                or not isinstance(record.get("command_bytes"), int)
-                or isinstance(record.get("command_bytes"), bool)
-                or record["command_bytes"] < 0
-                or not isinstance(record.get("command_sha256"), str)
-                or re.fullmatch(r"[0-9a-f]{64}", record["command_sha256"])
-                is None
-                or (
-                    record.get("exit_code") is not None
-                    and (
-                        not isinstance(record["exit_code"], int)
-                        or isinstance(record["exit_code"], bool)
-                    )
+    if provider["attempt_count"] != 1:
+        return False
+    command_log = provider["command_log"]
+    if not isinstance(command_log, list):
+        return False
+    for record in command_log:
+        if (
+            not isinstance(record, dict)
+            or set(record) != _COMMAND_LOG_FIELDS
+            or not _current_boolean_map(record.get("categories"), category_fields)
+            or not isinstance(record.get("command_bytes"), int)
+            or isinstance(record.get("command_bytes"), bool)
+            or record["command_bytes"] < 0
+            or not isinstance(record.get("command_sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", record["command_sha256"])
+            is None
+            or (
+                record.get("exit_code") is not None
+                and (
+                    not isinstance(record["exit_code"], int)
+                    or isinstance(record["exit_code"], bool)
                 )
-                or not isinstance(record.get("pre_edit"), bool)
-            ):
-                return False
+            )
+            or not isinstance(record.get("pre_edit"), bool)
+            or not isinstance(record.get("declared_verification"), bool)
+        ):
+            return False
+    if provider["tool_calls"]["command_execution"] != len(command_log):
+        return False
+    expected_categories = {
+        category: sum(record["categories"][category] for record in command_log)
+        for category in category_fields
+    }
+    expected_pre_edit_categories = {
+        category: sum(
+            record["categories"][category]
+            for record in command_log
+            if record["pre_edit"]
+        )
+        for category in category_fields
+    }
+    if (
+        provider["command_categories"] != expected_categories
+        or provider["pre_edit_command_categories"]
+        != expected_pre_edit_categories
+        or provider["pre_edit_command_executions"]
+        != sum(record["pre_edit"] for record in command_log)
+        or provider["declared_verification_executions"]
+        != sum(record["declared_verification"] for record in command_log)
+        or provider["pre_edit_declared_verification_executions"]
+        != sum(
+            record["pre_edit"] and record["declared_verification"]
+            for record in command_log
+        )
+    ):
+        return False
     return True
 
 
@@ -1519,7 +1629,7 @@ def current_routed_edit_telemetry(telemetry: Any) -> bool:
     if (
         not isinstance(telemetry, dict)
         or set(telemetry) != _PRE_EDIT_TELEMETRY_FIELDS
-        or telemetry.get("schema_version") != 2
+        or telemetry.get("schema_version") != 3
         or telemetry.get("status") != "routed_edit_observed"
     ):
         return False
@@ -1531,6 +1641,7 @@ def current_routed_edit_telemetry(telemetry: Any) -> bool:
         counts[field] = value
     return bool(
         counts["target_count"] > 0
+        and counts["observed_target_count"] == counts["target_count"]
         and counts["substantive_file_change_events"] > 0
         and counts["file_change_events"]
         >= counts["substantive_file_change_events"]
@@ -2212,7 +2323,7 @@ def capsule_pre_edit_failures(
         verification_value = metric(result, "pre_edit_verification_commands")
         if discovery_value != 0:
             discovery += 1
-        if read_value is None or read_value > 1:
+        if read_value != 0:
             reads += 1
         if verification_value != 0:
             verification += 1
@@ -2285,7 +2396,20 @@ def capsule_action_gate_coverage(
             )
         else:
             action_error = True
-        if current_routed_edit_telemetry(telemetry) and not action_error:
+        action_protocol = bool(
+            isinstance(provider, dict)
+            and provider.get("attempt_count") == 1
+            and provider.get("pre_edit_command_executions") == 0
+            and provider.get("declared_verification_executions") == 1
+            and provider.get("pre_edit_declared_verification_executions") == 0
+            and provider.get("pre_edit_command_categories")
+            == {"discovery": 0, "read": 0, "verify": 0}
+        )
+        if (
+            current_routed_edit_telemetry(telemetry)
+            and action_protocol
+            and not action_error
+        ):
             passed += 1
     return passed, total
 
@@ -2341,7 +2465,7 @@ def capsule_claim_limitations(
     preserved: bool,
     config: ComparisonConfig = CAPSULE_V5,
 ) -> list[str]:
-    """Enumerate every failed product-claim predicate for a Capsule result."""
+    """Enumerate every failed measured-corpus claim predicate."""
 
     limitations: list[str] = []
     successful_pairs, expected_pairs = primary_success_coverage(document, results, config)
@@ -2375,10 +2499,6 @@ def capsule_claim_limitations(
         limitations.append(f"recorded run errors occurred in {run_errors} run(s)")
     if document.get("provider") == "mock":
         limitations.append("mock provider runs are non-publishable")
-    if document.get("telemetry_attestation") != "externally-verified":
-        limitations.append(
-            "provider telemetry and grades are not independently attested"
-        )
     if not capsule_full_corpus(document):
         limitations.append("the result does not cover the full fixture corpus")
     repetitions = document.get("repetitions")
@@ -2387,6 +2507,13 @@ def capsule_claim_limitations(
     if not credible and not provider_errors and not verification_errors and not run_errors:
         limitations.append(
             "the run lacks complete publishable provenance or provider telemetry"
+        )
+
+    action_passed, action_total = capsule_action_gate_coverage(results, config)
+    if action_total == 0 or action_passed != action_total:
+        limitations.append(
+            f"the routed action gate passed only {action_passed}/{action_total} "
+            "Capsule v5 runs"
         )
 
     token_ci = primary_combined["fixture_cluster_bootstrap_95_ci"]
@@ -2424,8 +2551,8 @@ def capsule_claim_limitations(
     )
     if telemetry_failures:
         limitations.append(
-            "Capsule v5 pre-edit classification could not verify a routed/target "
-            f"edit in {telemetry_failures}/{successful_runs} successful run(s)"
+            "Capsule v5 pre-edit classification could not verify every routed edit "
+            f"in {telemetry_failures}/{successful_runs} successful run(s)"
         )
     return limitations
 
@@ -2476,11 +2603,12 @@ def capsule_v5_report(document: dict[str, Any]) -> str:
         f"- Telemetry attestation: `{document.get('telemetry_attestation', 'none')}`",
         "",
     ]
-    if not credible:
+    if limitations:
         lines.extend([
             "> Non-publishable experimental smoke run. Publishable evidence requires "
-            "a named real model, complete telemetry and provenance, the full suite, "
-            "and three or more repetitions.",
+            "a named real model, complete single-attempt action telemetry and "
+            "provenance, preserved quality, the full suite, three or more "
+            "repetitions, and a positive per-fixture token interval.",
             "",
         ])
     lines.extend([
@@ -2586,8 +2714,10 @@ def capsule_v5_report(document: dict[str, Any]) -> str:
     ])
     if not limitations:
         lines.append(
-            "This suite supports a product token-saving claim for Capsule v5 versus "
-            "Packet v3 while preserving measured behavior."
+            "This suite supports a measured token-saving result for Capsule v5 "
+            "versus Packet v3 on this corpus while preserving behavior in every "
+            "fixture. Provider telemetry remains self-reported; this is not a "
+            "universal guarantee."
         )
     else:
         observed_baseline = aggregates[config.primary_baseline][
@@ -2605,7 +2735,7 @@ def capsule_v5_report(document: dict[str, Any]) -> str:
             "Observed full-run result: Capsule v5 used "
             f"**{abs(observed_reduction):.2f}% {observed_direction}** total model "
             "tokens versus Packet v3. The suite "
-            "cannot establish a product token-saving claim across every fixture because "
+            "cannot establish a publishable token-saving result across every fixture because "
             + "; ".join(limitations)
             + "."
         )
@@ -2648,6 +2778,39 @@ def validate_capsule_release(
         results,
     ):
         errors.append("Capsule result does not satisfy current credibility gates")
+        return errors
+    config = CAPSULE_V5
+    aggregates = {
+        variant: aggregate(results, variant) for variant in config.variants
+    }
+    primary_combined = comparison(
+        results,
+        config.primary_baseline,
+        config.primary_candidate,
+        "combined_tokens",
+    )
+    try:
+        preserved = quality_not_worse(
+            results,
+            config.primary_baseline,
+            config.primary_candidate,
+        )
+    except (KeyError, TypeError):
+        preserved = False
+    limitations = capsule_claim_limitations(
+        document,
+        results,
+        aggregates,
+        primary_combined,
+        True,
+        preserved,
+        config,
+    )
+    if limitations:
+        errors.append(
+            "Capsule result does not satisfy release claim gates: "
+            + "; ".join(limitations)
+        )
         return errors
     expected = report(document).encode("utf-8")
     if rendered_report != expected:

@@ -52,15 +52,15 @@ packet_checker = _load_packet_checker()
 CAPSULE_VERSION = 5
 LEGACY_CAPSULE_VERSION = 4
 CAPSULE_PROTOCOL = {
-    "completion": "substantive_routed_edit_then_passing_V1",
-    "first_action": "file_change_or_one_routed_read",
+    "completion": "all_routed_edits_then_exact_V1_once",
+    "first_action": "file_change",
     "no_edit": "failure",
     "pre_edit_discovery": "forbidden",
-    "pre_edit_read_budget": 1,
+    "pre_edit_read_budget": 0,
     "pre_edit_verification": "forbidden",
     "recovery": "exact_frame_mismatch_or_failed_V1",
     "source_authority": "sealed_current_source_frames",
-    "verification": "V1_once_after_substantive_routed_edit",
+    "verification": "exact_V1_alone_once_after_all_routed_edits",
 }
 LEGACY_CAPSULE_PROTOCOL = {
     "first_action": "file_change_or_one_routed_read",
@@ -72,17 +72,17 @@ LEGACY_CAPSULE_PROTOCOL = {
 }
 CAPSULE_CONTROL = (
     "IMPLEMENTATION REQUIRED. The packet frame is the task. Source frames are current "
-    "pre-edit repository bytes, not patches or desired output. FIRST make every routed "
-    "edit; one bundled routed read is allowed only for placement and must be followed "
-    "by edits. Before a substantive routed edit, do not run V1, tests, syntax checks, "
-    "status, discovery, or a baseline. A passing pre-edit V1 is failure, not completion. "
-    "THEN run V1 once; stop only when that post-edit V1 passes."
+    "pre-edit repository bytes, not patches or desired output. FIRST change every "
+    "edit/create route. Before all routed changes exist, do not read files or run V1, "
+    "tests, syntax checks, status, discovery, or a baseline. A passing early V1 is "
+    "failure, not completion. THEN run the exact V1 command alone, exactly once; stop "
+    "only when that post-edit V1 passes."
 )
 CAPSULE_EXECUTION = (
     "IMPLEMENTATION REQUIRED: packet=task; source frames=current pre-edit bytes, not "
-    "desired output -> first implement every edit/create do, using at most one bundled "
-    "routed read only for placement -> before a substantive routed edit no V1/tests/"
-    "syntax/status/discovery/baseline; passing pre-edit V1=failure -> V1 once after edit "
+    "desired output -> first change every edit/create route with no pre-edit reads or "
+    "commands -> before all routed changes exist no V1/tests/syntax/status/discovery/"
+    "baseline; passing early V1=failure -> exact V1 alone exactly once after all edits "
     "-> stop only on pass; expand only after exact-frame mismatch or failed V1"
 )
 LEGACY_CAPSULE_EXECUTION = (
@@ -1173,6 +1173,12 @@ def check_capsule(
     benchmark callers can assert fail-closed behavior without shelling out.
     """
 
+    reported_version = CAPSULE_VERSION
+    if isinstance(capsule, (bytes, bytearray, memoryview)):
+        prefix = bytes(capsule[: len(LEGACY_MAGIC)])
+        if prefix == LEGACY_MAGIC:
+            reported_version = LEGACY_CAPSULE_VERSION
+
     try:
         return _check_capsule(
             repo,
@@ -1192,7 +1198,7 @@ def check_capsule(
         return {
             "errors": [str(exc)],
             "valid": False,
-            "version": CAPSULE_VERSION,
+            "version": reported_version,
         }
 
 
