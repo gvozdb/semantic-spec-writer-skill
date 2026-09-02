@@ -35,6 +35,7 @@ A smaller file is useful only when it remains faster to execute correctly. When 
 - Do not copy repository facts that the implementation agent can obtain from the exact target file without search. Include facts that prevent a wrong edit or extra discovery.
 - Prefer exact paths and one runnable verification command over generic implementation advice.
 - For an execution packet, spend authoring effort only on facts that remove downstream discovery or prevent a wrong edit. Do not turn the packet into a repository dump.
+- Give execution packets the canonical bounded downstream loop from the reference: one routed read, one implementation pass, one declared verification, then stop on success. Expansion requires a concrete contradiction or failure.
 
 ## Format
 

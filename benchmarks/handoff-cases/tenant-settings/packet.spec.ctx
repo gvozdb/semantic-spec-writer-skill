@@ -11,7 +11,7 @@ route:
     do: invalid -> ValueError "invalid <kind> setting"; no floats
   edit: settings/service.py::def resolve_setting
     do: select then coerce; return exactly {name:original_name,value,source}; no mutable input alias
-  expand: edit all targets; inspect routed files first; expand only on code/import contradiction
+execution: routed read once -> all do -> V1 once -> stop on pass; expand only on contradiction/failure
 
 basis: route-sha256:3de7fc582854c67020360424bc481912ebb962b76671c25b28ac4d474a405555
 

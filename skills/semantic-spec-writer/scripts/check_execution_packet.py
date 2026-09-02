@@ -20,6 +20,11 @@ BASIS_LINE = re.compile(r"^basis:\s*route-sha256:([0-9a-f]{64})\s*$")
 VERIFY_LINE = re.compile(r"^  V\d+:\s*`([^`]+)`\s*$")
 ACTION_LINE = re.compile(r"^    do:\s*(.+?)\s*$")
 EXPAND_LINE = re.compile(r"^  expand:\s*(.+?)\s*$")
+EXECUTION_LINE = re.compile(r"^execution:\s*(.+?)\s*$")
+BOUNDED_EXECUTION = (
+    "routed read once -> all do -> V1 once -> stop on pass; "
+    "expand only on contradiction/failure"
+)
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,15 @@ def parse_verify_commands(text: str) -> list[str]:
     return commands
 
 
+def parse_execution_policies(text: str) -> list[str]:
+    policies: list[str] = []
+    for line in text.splitlines():
+        match = EXECUTION_LINE.fullmatch(line)
+        if match:
+            policies.append(match.group(1))
+    return policies
+
+
 def route_sha256(repo: Path, targets: list[Target]) -> str:
     digest = hashlib.sha256()
     for target in sorted(targets, key=lambda item: (item.relative_path, item.kind)):
@@ -181,6 +195,7 @@ def validate(
     declared_bases = parse_bases(text)
     declared_basis = declared_bases[0] if declared_bases else None
     verify_commands = parse_verify_commands(text)
+    execution_policies = parse_execution_policies(text)
     if not targets:
         errors.append("packet has no route read/edit/create targets")
     if not any(target.kind in {"edit", "create"} for target in targets):
@@ -192,6 +207,10 @@ def validate(
         errors.append("packet has no exact Vn backtick command under verify")
     if len(declared_bases) > 1:
         errors.append("packet has duplicate basis declarations")
+    if execution_policies != [BOUNDED_EXECUTION]:
+        errors.append(
+            "packet requires exactly one canonical bounded execution policy"
+        )
 
     seen: dict[Path, tuple[str, str]] = {}
     routed_text: dict[str, str] = {}
@@ -297,6 +316,9 @@ def validate(
         "route_sha256": computed_basis,
         "declared_route_sha256": declared_basis,
         "verify_commands": verify_commands,
+        "execution_policy": (
+            execution_policies[0] if len(execution_policies) == 1 else None
+        ),
         "packet": packet_metrics,
         "routed_context": routed_metrics,
         "total_context": {

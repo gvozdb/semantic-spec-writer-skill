@@ -17,9 +17,9 @@ An additional execution-packet experiment uses three arms on multi-file cases:
 
 1. conventional Markdown;
 2. Semantic v1 with a compact edit scope;
-3. compiled Packet v2 with file-owned `do` actions, source anchors, and a stale-route hash.
+3. compiled Packet v3 with file-owned `do` actions, source anchors, a stale-route hash, and bounded execution.
 
-Packet v2 versus Semantic v1 is the primary comparison. Markdown is secondary;
+Packet v3 versus Semantic v1 is the primary comparison. Markdown is secondary;
 otherwise ordinary semantic compression could be mistaken for a packet benefit.
 
 Static compression alone is not evidence that a specification is useful. The

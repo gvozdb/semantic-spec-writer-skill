@@ -668,6 +668,38 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertTrue(metrics["valid"], case_dir.name)
             self.assertGreater(metrics["routed_context"]["files"], 0)
 
+    def test_execution_packet_requires_one_bounded_execution_policy(self) -> None:
+        source = HANDOFF_CASES / "tenant-settings"
+        execution_line = (
+            "execution: routed read once -> all do -> V1 once -> stop on pass; "
+            "expand only on contradiction/failure\n"
+        )
+        for replacement in ("", execution_line * 2):
+            with self.subTest(replacement_count=replacement.count("execution:")), \
+                    tempfile.TemporaryDirectory(prefix="packet-execution-") as directory:
+                packet = Path(directory) / "packet.spec.ctx"
+                text = (source / "packet.spec.ctx").read_text(encoding="utf-8")
+                packet.write_text(
+                    text.replace(execution_line, replacement), encoding="utf-8"
+                )
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(PACKET_CHECK),
+                        str(source / "starter"),
+                        str(packet),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                metrics = json.loads(result.stdout)
+                self.assertIn(
+                    "canonical bounded execution policy",
+                    "\n".join(metrics["errors"]),
+                )
+
     def test_execution_packet_rejects_escape_duplicate_and_stale_anchor(self) -> None:
         with tempfile.TemporaryDirectory(prefix="execution-packet-") as directory:
             root = Path(directory)
@@ -1167,7 +1199,7 @@ class BenchmarkCliTest(unittest.TestCase):
         }
         report = handoff.report(document)
         self.assertIn("Primary comparison coverage: **1/3**", report)
-        self.assertIn("cannot establish a Packet v2 token-saving claim", report)
+        self.assertIn("cannot establish a Packet v3 token-saving claim", report)
 
     def test_handoff_report_recomputes_credibility_fail_closed(self) -> None:
         handoff = load_module("benchmark_handoff_credible", HANDOFF)
@@ -1233,6 +1265,7 @@ class BenchmarkCliTest(unittest.TestCase):
             "provider": "codex",
             "model": "test-model",
             "reasoning_effort": "medium",
+            "packet_version": 3,
             "cases": [case.id for case in cases],
             "repetitions": 3,
             "variants": ["markdown", "semantic", "packet"],

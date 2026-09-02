@@ -186,7 +186,9 @@ Create a repository execution packet for this issue with the smallest complete e
 For a coding handoff, the skill can compile requirements into a task-specific
 route instead of appending a file list to a complete spec. Every existing or new
 target owns one or more `do` actions. A SHA-256 basis over routed files detects
-stale packets before implementation.
+stale packets before implementation. Packet v3 also carries a bounded execution
+loop: one routed read, one implementation pass, one declared verification, then
+stop on success.
 
 Validate a packet and its optional context budget:
 
@@ -201,7 +203,7 @@ Use `--print-basis` while authoring, then place the returned
 `route-sha256:<hash>` under `basis` and run the normal validation once.
 
 The separate three-arm benchmark compares Markdown, Semantic v1, and compiled
-Packet v2 on the same multi-file tasks. Packet v2 versus Semantic v1 is the
+Packet v3 on the same multi-file tasks. Packet v3 versus Semantic v1 is the
 primary comparison; see [methodology and commands](benchmarks/README.md).
 
 Semantic compression is lossy. Before handing a document to an implementation agent, review `acceptance`, exact identifiers, and `open_questions`.

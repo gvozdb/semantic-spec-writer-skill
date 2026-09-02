@@ -15,6 +15,6 @@
   "packet_required_patterns": [
     "route:",
     "basis: route-sha256:",
-    "expand:"
+    "execution:"
   ]
 }

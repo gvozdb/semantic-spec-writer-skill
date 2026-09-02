@@ -14,7 +14,7 @@ route:
     do: type outside invoice.paid|invoice.failed -> exactly {ok:false,status:422,error:"unsupported_event",type}; do not record
     do: duplicate normalized id -> exactly {ok:true,status:200,replayed:true,delivery:existing,deliveries:unchanged_deep_copy}
     do: new record exactly {event_id,type}; return exactly {ok:true,status:200,replayed:false,delivery:record,deliveries:updated}
-  expand: edit all targets; inspect routed files first; expand only on code/import contradiction
+execution: routed read once -> all do -> V1 once -> stop on pass; expand only on contradiction/failure
 
 basis: route-sha256:7a708b67ba5b743b209291e38638888fcf7fb40dafcdb4dcba6c1ad3a003b818
 verify:

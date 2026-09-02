@@ -87,7 +87,7 @@ def render_static(rows: list[dict[str, Any]]) -> str:
     )
     unit = "tokens" if include_tokens else "bytes"
     lines = [
-        f"| Case | Markdown {unit} | Semantic v1 {unit} | Packet v2 {unit} | Packet vs v1 |",
+        f"| Case | Markdown {unit} | Semantic v1 {unit} | Packet v3 {unit} | Packet vs v1 |",
         "|---|---:|---:|---:|---:|",
     ]
     reductions = []
@@ -149,6 +149,7 @@ def create_document(
     return {
         "schema_version": 1,
         "kind": "semantic-execution-packet-comparison",
+        "packet_version": 3,
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "created_at": datetime.now(UTC).isoformat(),
         "provider": args.provider,
@@ -480,6 +481,7 @@ def report_run_is_credible(
         or len(variants) != len(VARIANTS)
         or len(variants) != len(set(variants))
         or set(variants) != set(VARIANTS)
+        or document.get("packet_version") != 3
         or not isinstance(snapshots, dict)
         or set(snapshots) != corpus_ids
         or snapshots != current_snapshots
@@ -675,7 +677,7 @@ def report(document: dict[str, Any]) -> str:
         "| Arm | Runs | Task success | Tests | Input tokens | Uncached input | Output tokens | Wall time | Discovery | Reads | Verify | Commands | Tool calls |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
-    labels = {"markdown": "Markdown", "semantic": "Semantic v1", "packet": "Packet v2"}
+    labels = {"markdown": "Markdown", "semantic": "Semantic v1", "packet": "Packet v3"}
     for variant in VARIANTS:
         item = aggregates[variant]
         lines.append(
@@ -690,9 +692,9 @@ def report(document: dict[str, Any]) -> str:
         )
     lines.extend([
         "",
-        "## Primary comparison: Packet v2 vs Semantic v1",
+        "## Primary comparison: Packet v3 vs Semantic v1",
         "",
-        "| Metric | Semantic v1 | Packet v2 | Packet delta | Paired median reduction | 95% fixture CI |",
+        "| Metric | Semantic v1 | Packet v3 | Packet delta | Paired median reduction | 95% fixture CI |",
         "|---|---:|---:|---:|---:|---:|",
     ])
     comparisons = {
@@ -732,32 +734,37 @@ def report(document: dict[str, Any]) -> str:
     ])
     if not preserved:
         lines.append(
-            "Packet v2 regressed measured behavior. Any token or tool reduction is not a product benefit."
+            "Packet v3 regressed measured behavior. Any token or tool reduction is not a product benefit."
         )
     elif supported:
         lines.append(
-            "This suite supports lower uncached-input usage for Packet v2 versus Semantic v1 while preserving measured behavior."
+            "This suite supports lower uncached-input usage for Packet v3 versus Semantic v1 while preserving measured behavior."
         )
     elif credible and quality_improved:
-        uncached_reduction = core.compression_percent(
+        uncached_delta = core.metric_delta_percent(
             aggregates["semantic"]["total_uncached_input_tokens"],
             aggregates["packet"]["total_uncached_input_tokens"],
         )
+        uncached_usage = (
+            f"{abs(uncached_delta):.2f}% fewer uncached-input tokens"
+            if uncached_delta is not None and uncached_delta < 0
+            else f"{abs(uncached_delta or 0):.2f}% more uncached-input tokens"
+        )
         lines.append(
-            f"Packet v2 improved measured task success ({packet_successes}/{len(document['cases']) * document['repetitions']} "
+            f"Packet v3 improved measured task success ({packet_successes}/{len(document['cases']) * document['repetitions']} "
             f"versus {semantic_successes}/{len(document['cases']) * document['repetitions']}) and used "
-            f"{uncached_reduction:.2f}% fewer uncached-input tokens across all runs. "
+            f"{uncached_usage} across all runs. "
             f"The strict equal-success token comparison covered only {primary_uncached['pairs']}/"
             f"{expected_primary_pairs} pairs, so this establishes a quality gain for this suite, "
             "not an isolated full-suite token-saving claim."
         )
     elif credible:
         lines.append(
-            "Packet v2 preserved measured behavior but did not establish a reliable uncached-input reduction over Semantic v1."
+            "Packet v3 preserved measured behavior but did not establish a reliable uncached-input reduction over Semantic v1."
         )
     else:
         lines.append(
-            "Directional result only; this run cannot establish a Packet v2 token-saving claim."
+            "Directional result only; this run cannot establish a Packet v3 token-saving claim."
         )
     lines.extend([
         "",

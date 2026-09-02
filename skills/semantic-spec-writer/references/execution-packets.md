@@ -17,7 +17,7 @@ route:
     do: claim scoped key before mutation; replay same payload; reject conflicts
   edit: tests/refunds/test_service.py
     do: cover first request,replay,conflict,and no duplicate event
-  expand: only when listed code or imports contradict this packet
+execution: routed read once -> all do -> V1 once -> stop on pass; expand only on contradiction/failure
 
 basis: route-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
@@ -41,6 +41,7 @@ path/to/file.py:START-END::exact source text
 - `do`: the file-owned change. Every `edit` and `create` target requires at least one `do`; move the relevant contract here instead of duplicating it in a separate task block.
 - `expand`: a fail-safe, not permission for routine full-repository search. Expand only after a listed file, import, generated file, or verification failure proves the route incomplete.
 - `basis`: SHA-256 over the sorted routed paths and complete bytes of every routed existing file; create targets use a `CREATE` marker. It makes stale packets fail before implementation.
+- `execution`: the exact bounded downstream loop. Use `routed read once -> all do -> V1 once -> stop on pass; expand only on contradiction/failure`. This prevents routine repository listing, repeated reads, and redundant checks after the declared verification passes.
 
 Use line ranges only for a handoff against the current snapshot. Use a short exact declaration or unique source fragment as the anchor. Do not use a guessed symbol, stale line range, absolute path, directory, glob, or `..` path.
 
@@ -48,13 +49,13 @@ Use line ranges only for a handoff against the current snapshot. Use a short exa
 
 1. Find the actual entrypoint, implementation boundary, dependent contract, and existing narrow verification command.
 2. Read only enough code to establish the route and non-obvious contract.
-3. Write the packet directly. Preserve behavior and acceptance exactly; do not copy code that the routed slice already exposes.
+3. Write the packet directly. Preserve behavior and acceptance exactly; do not copy code that the routed slice already exposes. Include the canonical bounded `execution` line.
 4. Run `scripts/check_execution_packet.py REPO PACKET --print-basis`, replace the placeholder basis with the printed value, then run the checker normally. When `tiktoken` is available, add `--encoding NAME`. If the user supplied a context limit, add `--max-context-tokens N`.
 5. If validation exposes a stale route, missing verification command, or broken anchor, fix it once. Do not broaden it speculatively.
 
 The checker validates containment, route syntax, file-owned actions, file
-existence, ranges, unique anchors, canonical duplicate routing, exact `Vn`
-command syntax, the stale-route basis, and an optional token budget. It cannot
+existence, ranges, unique anchors, canonical duplicate routing, bounded execution,
+exact `Vn` command syntax, the stale-route basis, and an optional token budget. It cannot
 prove that the selected files are semantically complete; acceptance and the
 project-specific verification command remain the correctness gate.
 

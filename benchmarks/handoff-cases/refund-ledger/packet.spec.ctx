@@ -14,7 +14,7 @@ route:
     do: then scoped account_id+key lookup; existing["order_id"]==order["id"] and same refund_id,amount -> replay; mismatch -> exactly {ok:false,error:"idempotency_conflict"}
     do: new entry exactly {account_id:order["account_id"],order_id:order["id"],key,refund_id,amount_cents}; deep-copy order and increment refunded_cents; append entry + one event
     do: success exactly {ok:true,replayed:false,refund:entry,order,ledger,events}; replay same keys with replayed:true and unchanged deep copies
-  expand: edit all targets; inspect routed files first; expand only on code/import contradiction
+execution: routed read once -> all do -> V1 once -> stop on pass; expand only on contradiction/failure
 
 basis: route-sha256:ccf6b5f55ed2ea9296e7432a58fb944ca105972a250db8bd55eede649c88e091
 keep: no mutation,timestamps,generated identifiers; retain arbitrary nested fields
