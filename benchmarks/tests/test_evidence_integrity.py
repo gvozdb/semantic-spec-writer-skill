@@ -516,6 +516,37 @@ class EvidenceIntegrityTest(unittest.TestCase):
             )
         )
 
+        split_edit_attestation = copy.deepcopy(document)
+        split_edit_result = next(
+            result
+            for result in split_edit_attestation["results"]
+            if result["variant"] == "capsule"
+        )
+        split_edit = split_edit_result["provider"]["pre_edit_telemetry"]
+        split_edit_result["provider"]["tool_calls"]["file_change"] = 2
+        split_edit_result["provider"]["tool_call_total"] = 3
+        split_edit["file_change_events"] = 2
+        split_edit["substantive_file_change_events"] = 2
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                split_edit_attestation,
+                split_edit_attestation["results"],
+            )
+        )
+
+        contradictory_grade = copy.deepcopy(document)
+        contradictory_grade["results"][0]["grade"].update({
+            "acceptance_passed": 0,
+            "acceptance_pass_rate": 0.0,
+            "task_success": True,
+        })
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                contradictory_grade,
+                contradictory_grade["results"],
+            )
+        )
+
     def test_current_capsule_release_validation_consumes_exact_pair(self) -> None:
         handoff = load_module("handoff_capsule_release", HANDOFF)
         document = self._credible_capsule_document(handoff)
@@ -649,6 +680,20 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 "declared_verification_executions",
                 2,
             ),
+        )
+        failed_v1 = copy.deepcopy(document)
+        failed_v1_result = next(
+            result
+            for result in failed_v1["results"]
+            if result["variant"] == "capsule"
+        )
+        failed_v1_result["provider"]["command_log"][0]["exit_code"] = 1
+        self.assertFalse(
+            handoff.capsule_report_is_credible(failed_v1, failed_v1["results"])
+        )
+        self.assertIn(
+            "Capsule result does not satisfy current credibility gates",
+            handoff.validate_capsule_release(failed_v1, rendered),
         )
         assert_rejected(
             "raw provider error",

@@ -84,6 +84,7 @@ PUBLIC_ERROR_CODES = frozenset({
     "capsule_pre_edit_read",
     "capsule_pre_edit_verification",
     "capsule_routed_edit_attestation_failed",
+    "capsule_tool_sequence",
     "grader_exception",
     "grader_timeout",
     "provider_event_error",

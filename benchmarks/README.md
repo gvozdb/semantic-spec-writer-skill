@@ -244,9 +244,10 @@ python3 -B benchmarks/handoff.py report \
 The Capsule report distinguishes total discovery/read events from classified
 pre-edit events, measures combined input plus output tokens, and reports an
 input-only cache-price break-even without hardcoding provider prices. A Capsule
-run is claim-eligible only when every routed edit precedes every command, the
-exact declared verification runs alone exactly once, and the provider attempt
-count is one. Provider telemetry and grades remain self-reported; a separate
+run is claim-eligible only when one file-change operation contains every routed
+edit, the exact declared verification runs alone exactly once, no other tool
+call occurs, and the provider attempt count is one. Provider telemetry and
+grades remain self-reported; a separate
 secure routed-file comparison makes no-edit and partial-edit outcomes fail
 regardless of reported status or verification exit. Publication also requires
 preserved quality, complete paired telemetry, and a positive total-token

@@ -53,6 +53,7 @@ CAPSULE_VERSION = 5
 LEGACY_CAPSULE_VERSION = 4
 CAPSULE_PROTOCOL = {
     "completion": "all_routed_edits_then_exact_V1_once",
+    "edit_strategy": "single_atomic_file_change",
     "first_action": "file_change",
     "no_edit": "failure",
     "pre_edit_discovery": "forbidden",
@@ -72,18 +73,18 @@ LEGACY_CAPSULE_PROTOCOL = {
 }
 CAPSULE_CONTROL = (
     "IMPLEMENTATION REQUIRED. The packet frame is the task. Source frames are current "
-    "pre-edit repository bytes, not patches or desired output. FIRST change every "
-    "edit/create route. Before all routed changes exist, do not read files or run V1, "
-    "tests, syntax checks, status, discovery, or a baseline. A passing early V1 is "
-    "failure, not completion. THEN run the exact V1 command alone, exactly once; stop "
-    "only when that post-edit V1 passes."
+    "pre-edit repository bytes, not patches or desired output. FIRST use one atomic "
+    "file-change operation containing every edit/create route; do not split the edit. "
+    "Before that complete change, do not read files or run commands. THEN run the exact "
+    "V1 command alone, exactly once; stop only when that post-edit V1 passes. Any other "
+    "tool call or a passing early V1 is failure, not completion."
 )
 CAPSULE_EXECUTION = (
     "IMPLEMENTATION REQUIRED: packet=task; source frames=current pre-edit bytes, not "
-    "desired output -> first change every edit/create route with no pre-edit reads or "
-    "commands -> before all routed changes exist no V1/tests/syntax/status/discovery/"
-    "baseline; passing early V1=failure -> exact V1 alone exactly once after all edits "
-    "-> stop only on pass; expand only after exact-frame mismatch or failed V1"
+    "desired output -> one atomic file-change operation contains every edit/create do; "
+    "do not split -> no read/command before that complete change -> exact V1 alone "
+    "exactly once -> stop only on pass; any other tool call or early V1=failure; expand "
+    "only after exact-frame mismatch or failed V1"
 )
 LEGACY_CAPSULE_EXECUTION = (
     "sealed frames are exact patch operands -> edit immediately or use at most one "

@@ -24,12 +24,12 @@ CAPSULE_SCRIPT = (
 )
 FIXTURE = ROOT / "benchmarks" / "handoff-cases" / "tenant-settings"
 EXPECTED_CAPSULE_SHA256 = (
-    "abb3965e6687033dbbb5f1a98650707ebd3a4a3922b542dcc2bee9c11350aa0d"
+    "e8add8cf8a8d49b02354da9690b8b0a2ce154d57dff3a1661b16fcac199cef7b"
 )
 FIXTURE_CAPSULE_SHA256 = {
-    "refund-ledger": "ef48e097d5a59762cc57fcdaae43747d133ee30ddc4d1acf3128b936ca243194",
-    "tenant-settings": "abb3965e6687033dbbb5f1a98650707ebd3a4a3922b542dcc2bee9c11350aa0d",
-    "webhook-dispatch": "39942796f73d745358fc290da26e8c2e5b12e1d7749fb745e7f1be623aa8bda0",
+    "refund-ledger": "97a6efbfa2f23fed9035026d09e439732b9d9ae9f95e9c1c03c63757b751f816",
+    "tenant-settings": "e8add8cf8a8d49b02354da9690b8b0a2ce154d57dff3a1661b16fcac199cef7b",
+    "webhook-dispatch": "ff0dbc4a8ff475270b2ac1165a95e3f8c44cad328341f79e8c60fbee57b132b7",
 }
 
 

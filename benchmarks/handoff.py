@@ -109,6 +109,7 @@ CAPSULE_ACTION_ERROR_CODES = frozenset({
     "capsule_pre_edit_read",
     "capsule_pre_edit_verification",
     "capsule_routed_edit_attestation_failed",
+    "capsule_tool_sequence",
 })
 sys.path.insert(0, str(BENCHMARKS))
 import benchmark as core  # noqa: E402
@@ -950,6 +951,9 @@ def run(args: argparse.Namespace) -> Path:
                         capsule_contract_failed = True
                         run_errors.append("capsule_routed_edit_attestation_failed")
                     if enforce_action_telemetry:
+                        if not capsule_has_exact_tool_sequence(provider):
+                            capsule_contract_failed = True
+                            run_errors.append("capsule_tool_sequence")
                         pre_edit_categories = provider.get(
                             "pre_edit_command_categories",
                             {},
@@ -1494,6 +1498,8 @@ def current_privacy_redacted_provider(provider: Any) -> bool:
             return False
     if provider["tool_calls"]["command_execution"] != len(command_log):
         return False
+    if provider["tool_call_total"] != sum(provider["tool_calls"].values()):
+        return False
     expected_categories = {
         category: sum(record["categories"][category] for record in command_log)
         for category in category_fields
@@ -1590,6 +1596,8 @@ def current_privacy_redacted_grade(
         or passed > total
         or acceptance_passed > acceptance_total
         or not isinstance(grade.get("task_success"), bool)
+        or grade["task_success"]
+        != (acceptance_total > 0 and acceptance_passed == acceptance_total)
         or not isinstance(grade.get("failures"), list)
         or (
             grading_snapshot is not None
@@ -1647,6 +1655,34 @@ def current_routed_edit_telemetry(telemetry: Any) -> bool:
         >= counts["substantive_file_change_events"]
         and counts["file_change_events"]
         >= counts["unclassified_file_change_events"]
+    )
+
+
+def capsule_has_exact_tool_sequence(provider: Any) -> bool:
+    """Require one all-route change followed by one verification command."""
+
+    command_log = provider.get("command_log") if isinstance(provider, dict) else None
+    return bool(
+        isinstance(provider, dict)
+        and provider.get("tool_calls")
+        == {"command_execution": 1, "file_change": 1}
+        and provider.get("tool_call_total") == 2
+        and isinstance(command_log, list)
+        and len(command_log) == 1
+        and isinstance(command_log[0], dict)
+        and command_log[0].get("declared_verification") is True
+        and command_log[0].get("pre_edit") is False
+        and command_log[0].get("exit_code") == 0
+        and current_routed_edit_telemetry(provider.get("pre_edit_telemetry"))
+        and provider["pre_edit_telemetry"].get("file_change_events") == 1
+        and provider["pre_edit_telemetry"].get(
+            "substantive_file_change_events"
+        )
+        == 1
+        and provider["pre_edit_telemetry"].get(
+            "unclassified_file_change_events"
+        )
+        == 0
     )
 
 
@@ -2003,6 +2039,10 @@ def capsule_report_is_credible(
             result.get("provider", {}).get("pre_edit_telemetry")
             if isinstance(result.get("provider"), dict)
             else None
+        )
+        and (
+            result.get("variant") != CAPSULE_V5.primary_candidate
+            or capsule_has_exact_tool_sequence(result.get("provider"))
         )
         for result in results
     )
@@ -2398,6 +2438,7 @@ def capsule_action_gate_coverage(
             action_error = True
         action_protocol = bool(
             isinstance(provider, dict)
+            and capsule_has_exact_tool_sequence(provider)
             and provider.get("attempt_count") == 1
             and provider.get("pre_edit_command_executions") == 0
             and provider.get("declared_verification_executions") == 1

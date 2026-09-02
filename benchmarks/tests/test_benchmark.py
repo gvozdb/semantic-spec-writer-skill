@@ -895,6 +895,10 @@ class BenchmarkCliTest(unittest.TestCase):
                 b'"first_action":"file_change"',
                 first,
             )
+            self.assertIn(
+                b'"edit_strategy":"single_atomic_file_change"',
+                first,
+            )
             self.assertIn(b'"pre_edit_read_budget":0', first)
             self.assertIn(b'"no_edit":"failure"', first)
             self.assertIn(b'"pre_edit_verification":"forbidden"', first)
@@ -929,7 +933,7 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertIn(capsule_module.CAPSULE_CONTROL, prompt)
         self.assertIn(
-            "A passing early V1 is failure, not completion",
+            "a passing early V1 is failure, not completion",
             prompt,
         )
         self.assertLess(
@@ -1097,6 +1101,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     "capsule_no_routed_edit",
                     "capsule_pre_edit_command",
                     "capsule_pre_edit_verification",
+                    "capsule_tool_sequence",
                 ],
             )
             self.assertFalse(capsule["grade"]["task_success"])
@@ -2692,7 +2697,13 @@ class BenchmarkCliTest(unittest.TestCase):
 
         recovery_read = json.loads(json.dumps(document))
         add_command(recovery_read, "read", pre_edit=False)
-        self.assertNotIn("pre-edit command budget", handoff.report(recovery_read))
+        recovery_report = handoff.report(recovery_read)
+        self.assertNotIn("pre-edit command budget", recovery_report)
+        self.assertIn(
+            "cannot establish a publishable token-saving result",
+            recovery_report,
+        )
+        self.assertIn("routed action gate passed only 8/9", recovery_report)
 
         discovery = json.loads(json.dumps(document))
         add_command(discovery, "discovery", pre_edit=True)
@@ -2700,7 +2711,7 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertIn("cannot establish a publishable token-saving result", discovery_report)
         self.assertIn("classified pre-edit command budget", discovery_report)
         self.assertIn(
-            "does not satisfy release claim gates",
+            "does not satisfy current credibility gates",
             "\n".join(
                 handoff.validate_capsule_release(
                     discovery,
