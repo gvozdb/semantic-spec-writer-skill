@@ -122,9 +122,30 @@ every routed post-state with the captured starter, and fails no-edit, partial
 edit, split-edit, pre-edit command, substituted verification, or multi-attempt
 outcomes. It
 reports behavior, provider telemetry, and byte-auditable static overhead.
-Capsule benchmark numbers are published only in
-a separate release artifact after the current result and exact rendered report
-pass the isolated release credibility validator. That gate runs with Python
+
+Published `gpt-5.6-terra`, medium-reasoning Capsule v6 run:
+
+| Measure | Packet v3 | Capsule v6 | Capsule result |
+|---|---:|---:|---:|
+| Task success | 9/9 | 9/9 | 100% preserved |
+| Acceptance tests | 100% | 100% | All tests passed |
+| Total model tokens | 727,365 | 454,192 | 37.56% fewer |
+| Uncached input tokens | 105,462 | 85,751 | 18.69% fewer |
+| Output tokens | 18,767 | 10,809 | 42.40% fewer |
+| Agent wall time | 434.703s | 278.693s | 35.89% lower |
+| Tool calls | 35 | 18 | 48.57% fewer |
+| Discovery/read commands | 21/20 | 0/0 | Eliminated in this corpus |
+
+All 9/9 Capsule runs passed the exact routed-action gate. The fixture-cluster
+95% confidence interval for total-token reduction was
+`[23.282%, 38.629%]`. Capsule bytes were 222.46% larger at the median, so the
+gain came from eliminating downstream discovery and read turns, not static
+compression. These are measured corpus results, not a universal guarantee. See
+the [rendered Capsule report](CAPSULE_BENCHMARK.md) and
+[privacy-redacted result](benchmarks/results/published/gpt-5.6-terra-medium-20260903-context-capsule-v6/capsule-r3.json).
+
+The result and exact rendered report pass an isolated release credibility
+validator. That gate runs with Python
 `-I` from the launcher's exact `HEAD` Git blob, then attests the live launcher
 and harness blobs. It permits only the root report, two README claim files, and
 one non-executable published directory containing `capsule-r3.json` plus a
@@ -154,6 +175,7 @@ See the [implementation report](BENCHMARK.md),
 [context report](CONTEXT_BENCHMARK.md),
 [lifecycle report](LIFECYCLE_BENCHMARK.md),
 [execution packet report](HANDOFF_BENCHMARK.md),
+[Capsule v6 report](CAPSULE_BENCHMARK.md),
 [historical artifacts — unsanitized, non-secret-only](benchmarks/results/published/gpt-5.6-terra-medium-20260901-generated/),
 [historical Packet artifacts — unsanitized, non-secret-only](benchmarks/results/published/gpt-5.6-terra-medium-20260902-execution-packet/),
 and [methodology and commands](benchmarks/README.md).

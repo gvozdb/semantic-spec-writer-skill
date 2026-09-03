@@ -216,6 +216,21 @@ Published `gpt-5.6-terra`, medium-reasoning Packet v3 run:
 See the [rendered report](../HANDOFF_BENCHMARK.md) and
 [historical raw result — unsanitized, non-secret-only](results/published/gpt-5.6-terra-medium-20260902-execution-packet/handoff-r3.json).
 
+Published `gpt-5.6-terra`, medium-reasoning Capsule v6 run:
+
+- 18/18 complete, unique arm runs with no provider or verification failures;
+- Packet v3 and Capsule v6 both passed 9/9 tasks and 100% of tests;
+- all 9/9 Capsule runs passed the exact routed-action gate;
+- Capsule v6 used 37.56% fewer total model tokens, 18.69% fewer uncached-input
+  tokens, 42.40% fewer output tokens, and 48.57% fewer tool calls;
+- the total-token fixture-cluster 95% confidence interval was
+  `[23.282%, 38.629%]`;
+- median static Capsule overhead was 222.46%, so the measured gain came from
+  removing downstream discovery/read turns rather than a smaller artifact.
+
+See the [rendered Capsule report](../CAPSULE_BENCHMARK.md) and
+[privacy-redacted result](results/published/gpt-5.6-terra-medium-20260903-context-capsule-v6/capsule-r3.json).
+
 Run the two-arm Packet v3 versus Capsule v6 benchmark independently:
 
 ```bash
