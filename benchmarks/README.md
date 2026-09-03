@@ -57,10 +57,12 @@ passes deterministic tests.
   command-category telemetry, and privacy-redacted failure metadata. They do
   not persist provider-controlled prompts, raw command strings, messages,
   stdout/stderr, or grader failure prose.
-- Exact specification bytes are embedded as canonical base64 task-document
-  attestations. Credibility checks decode those bytes and recompute document
-  hashes, prompt hashes, metrics, and static rows; a plausible-looking digest
-  or metric object alone is not evidence.
+- Exact selected specification bytes are embedded as canonical base64
+  task-document attestations. Credibility checks decode those bytes and
+  recompute document hashes, prompt hashes, metrics, and static rows; a
+  plausible-looking digest or metric object alone is not evidence. Rejected
+  authoring output is omitted; only its hash, size metrics, deterministic
+  validation codes, and fully charged provider usage survive.
 - Fixture, starter, specification, prompt, and verification hashes are captured
   before the first arm, checked between arms, and revalidated when rendering a
   report. Missing, duplicate, stale, or partially instrumented runs fail closed.
@@ -68,9 +70,9 @@ passes deterministic tests.
   report labels smaller or mock runs as smoke tests.
 - Generated-spec runs keep every failed attempt and include all retry usage in
   authoring cost. `--max-attempts` is bounded; no result is silently discarded.
-- The public Capsule lifecycle run permits exactly one authoring attempt per
-  fixture. Its input/output usage is embedded in the same result and charged in
-  full before any token-saving claim is evaluated.
+- The public Capsule lifecycle run permits at most two authoring attempts per
+  fixture. Every attempt's input/output usage is embedded in the same result and
+  charged in full before any token-saving claim is evaluated.
 - Capsule source hashes come from its parsed, sealed source frames. All Capsule
   arms receive workspaces materialized from the same validated in-memory starter
   snapshot, so replacing a fixture path between validation and copy cannot alter
@@ -169,7 +171,7 @@ paid model call:
 ```bash
 smoke_dir=$(mktemp -d)
 python3 -B benchmarks/handoff.py run \
-  --comparison markdown-capsule-lifecycle-v1 \
+  --comparison markdown-capsule-lifecycle-v2 \
   --provider mock \
   --repetitions 1 \
   --seed 20260901 \
@@ -243,35 +245,33 @@ See the [rendered report](../HANDOFF_BENCHMARK.md) and
 Run the preregistered ordinary Markdown versus Capsule v6 lifecycle benchmark:
 
 ```bash
-CAPSULE_RUN_NAME=gpt-5.6-terra-medium-20260903-markdown-capsule-lifecycle-v1
+CAPSULE_RUN_NAME=gpt-5.6-terra-medium-20260903-markdown-capsule-lifecycle-v2
+CAPSULE_RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/capsule-lifecycle-v2.XXXXXX")
 
 python3 -B benchmarks/handoff.py run \
-  --comparison markdown-capsule-lifecycle-v1 \
+  --comparison markdown-capsule-lifecycle-v2 \
   --provider codex \
   --model gpt-5.6-terra \
   --reasoning-effort medium \
   --repetitions 3 \
   --seed 20260901 \
   --timeout-seconds 600 \
-  --output "benchmarks/results/published/${CAPSULE_RUN_NAME}/capsule-r3.json"
+  --output "${CAPSULE_RUN_DIR}/capsule-r3.json"
 
 python3 -B benchmarks/handoff.py report \
-  "benchmarks/results/published/${CAPSULE_RUN_NAME}/capsule-r3.json" \
-  --output CAPSULE_BENCHMARK.md
-
-python3 -B benchmarks/handoff.py report \
-  "benchmarks/results/published/${CAPSULE_RUN_NAME}/capsule-r3.json" \
-  --output "benchmarks/results/published/${CAPSULE_RUN_NAME}/CAPSULE.md"
+  "${CAPSULE_RUN_DIR}/capsule-r3.json" \
+  --output "${CAPSULE_RUN_DIR}/CAPSULE.md"
 ```
 
 Both arms start from the same complete `baseline.md`, captured fixture, clean
 starter repository, hidden grader, model, reasoning effort, timeout, and
 counterbalanced implementation schedule. Markdown receives that source task
-directly and pays zero preparation-model tokens. Capsule first pays for one
-model authoring attempt per fixture through the published skill, then a
-deterministic compiler seals the generated route and exact source. Every
-authoring input/output token and every implementation input/output token is
-included. Historical Packet measurements are never pooled into this result.
+directly and pays zero preparation-model tokens. Capsule pays for a bounded
+authoring process of at most two attempts per fixture through the published
+skill, then a deterministic compiler seals the generated route and exact source.
+The second attempt runs only after deterministic validation rejects the first.
+Every authoring input/output token and every implementation input/output token
+is included. Historical Packet measurements are never pooled into this result.
 
 The primary one-use comparison charges the complete fixture-specific authoring
 bill to every Capsule pair. The measured three-use comparison charges authoring
@@ -281,21 +281,38 @@ is conservative for Capsule because Markdown receives a complete human-readable
 task without paying for its creation.
 
 The Capsule report distinguishes total discovery/read events from classified
-pre-edit events and measures combined input plus output tokens. Schema-v6
+pre-edit events and measures combined input plus output tokens. Capsule v6
 evidence embeds the exact preregistration, generated handoffs, authoring usage,
-and execution profile. Publication requires one valid authoring attempt per
+and execution profile. Publication requires one valid handoff per
 fixture, every Capsule hidden test and acceptance check, no pairwise quality
 loss, the exact one-edit/one-verification action sequence, fewer one-use total
 tokens in every pair, a positive fixture-cluster interval, lower measured
-three-use total tokens, and zero provider, verification, provenance, privacy,
-or run errors. Provider usage and duration remain self-reported. Static
-overhead is byte-auditable; no tokenizer-derived document claim is published.
+three-use total tokens, and zero terminal authoring, provider, verification,
+provenance, privacy, or implementation errors. Provider usage and duration
+remain self-reported. Static overhead is byte-auditable; no tokenizer-derived
+document claim is published.
 
 The exact corpus, model, seed, timeout, repetitions, metric, bootstrap, gates,
 and no-rerun rule are committed in
-[`capsule-lifecycle-v1.prereg.json`](capsule-lifecycle-v1.prereg.json). The real
+[`capsule-lifecycle-v2.prereg.json`](capsule-lifecycle-v2.prereg.json). The real
 run command refuses any mismatch. Do not rerun or weaken a threshold after
 observing an unfavorable result.
+
+Stop if the report says `Non-publishable run`. For a passing run only, publish
+the exact result and report bytes:
+
+```bash
+install -d -m 0755 "benchmarks/results/published/${CAPSULE_RUN_NAME}"
+install -m 0644 "${CAPSULE_RUN_DIR}/capsule-r3.json" \
+  "benchmarks/results/published/${CAPSULE_RUN_NAME}/capsule-r3.json"
+install -m 0644 "${CAPSULE_RUN_DIR}/CAPSULE.md" CAPSULE_BENCHMARK.md
+install -m 0644 "${CAPSULE_RUN_DIR}/CAPSULE.md" \
+  "benchmarks/results/published/${CAPSULE_RUN_NAME}/CAPSULE.md"
+```
+
+The 2026-09-03 v1 run failed its authoring gate before implementation and was
+not rerun. No Capsule savings claim was published. The immutable outcome and
+evidence limitation are recorded in [`FAILED_RUNS.md`](FAILED_RUNS.md).
 
 Capsule evidence is published separately from the clean code-stage commit. Use
 a fresh checkout or dedicated worktree with no ignored files, run the benchmark

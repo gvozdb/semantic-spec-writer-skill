@@ -62,7 +62,7 @@ jobs:
         run: |
           smoke_dir=$(mktemp -d)
           python3 -B benchmarks/handoff.py run \
-            --comparison markdown-capsule-lifecycle-v1 \
+            --comparison markdown-capsule-lifecycle-v2 \
             --provider mock \
             --repetitions 1 \
             --seed 20260901 \

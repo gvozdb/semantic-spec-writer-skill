@@ -23,6 +23,25 @@ ROOT = BENCHMARKS.parent
 SKILL_DIR = ROOT / "skills" / "semantic-spec-writer"
 SKILL = SKILL_DIR / "SKILL.md"
 MAX_GENERATED_ARTIFACT_BYTES = 2_000_000
+RETRYABLE_AUTHORING_CODES = frozenset({
+    "artifact",
+    "conversion",
+    "packet",
+    "semantic",
+    "verification",
+})
+TERMINAL_AUTHORING_CODES = frozenset({
+    "input_integrity",
+    "provider",
+    "provenance",
+    "runtime",
+    "timeout",
+})
+AUTHORING_VALIDATION_STATUSES = frozenset({
+    "passed",
+    "retryable_failure",
+    "terminal_failure",
+})
 # These canonical-document hashes identify the pre-snapshot published lifecycle
 # evidence.  It remains reproducible as a historical report, but is not accepted
 # by generation_report_is_credible(), which intentionally requires current
@@ -69,8 +88,9 @@ def generation_prompt(
     if previous_error:
         prompt += (
             "A previous independent attempt failed deterministic validation. "
-            "Correct that failure without dropping requirements:\n"
-            f"{previous_error[-1200:]}\n"
+            "Rebuild the artifact from the immutable inputs, run the required "
+            "checker, and correct all format, route, anchor, verification, and "
+            "size failures without dropping requirements.\n"
         )
     return prompt
 
@@ -177,7 +197,7 @@ def generation_document(
             starter_snapshot=starter,
         )
     document = GenerationRunDocument({
-        "schema_version": 2,
+        "schema_version": 3,
         "kind": "semantic-spec-generation",
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "created_at": datetime.now(UTC).isoformat(),
@@ -283,6 +303,66 @@ def aggregate_attempt_providers(
         "stderr_metadata": selected.get("stderr_metadata", core.text_metadata("")),
         "attempt_count": len(attempts),
     }
+
+
+def expected_conversion_check(
+    source_metrics: dict[str, int],
+    output_metrics: dict[str, int],
+    token_encoding: str | None,
+    recorded: Any = None,
+) -> dict[str, Any]:
+    """Reconstruct the deterministic conversion-check result."""
+
+    source = {
+        "bytes": source_metrics["bytes"],
+        "words": source_metrics["words"],
+    }
+    output = {
+        "bytes": output_metrics["bytes"],
+        "words": output_metrics["words"],
+    }
+    result: dict[str, Any] = {
+        "source": source,
+        "output": output,
+        "smaller_bytes": output["bytes"] < source["bytes"],
+        "smaller_words": output["words"] < source["words"],
+        "encoding": token_encoding,
+    }
+    if token_encoding is not None:
+        if not isinstance(recorded, dict):
+            raise ValueError("token conversion evidence is missing")
+        recorded_source = recorded.get("source")
+        recorded_output = recorded.get("output")
+        if not isinstance(recorded_source, dict) or not isinstance(
+            recorded_output,
+            dict,
+        ):
+            raise ValueError("token conversion evidence is malformed")
+        source_tokens = recorded_source.get("tokens")
+        output_tokens = recorded_output.get("tokens")
+        if (
+            type(source_tokens) is not int
+            or source_tokens < 0
+            or type(output_tokens) is not int
+            or output_tokens < 0
+        ):
+            raise ValueError("token conversion counts are malformed")
+        source["tokens"] = source_tokens
+        output["tokens"] = output_tokens
+        result["smaller_tokens"] = output_tokens < source_tokens
+    return result
+
+
+def conversion_check_passed(
+    value: Any,
+    token_encoding: str | None,
+) -> bool:
+    if not isinstance(value, dict):
+        return False
+    fields = ["smaller_bytes", "smaller_words"]
+    if token_encoding is not None:
+        fields.append("smaller_tokens")
+    return all(value.get(field) is True for field in fields)
 
 
 def prepare_generation_workspace(
@@ -451,9 +531,12 @@ def generate(
                     case, args.token_encoding, previous_error
                 )
                 provider = failed_provider("provider did not start")
+                provider_completed = False
                 semantic = ""
                 error = None
                 conversion_check = None
+                validation_status = "terminal_failure"
+                validation_codes = ["runtime"]
                 try:
                     if args.provider == "codex":
                         provider = core.run_codex(
@@ -476,20 +559,41 @@ def generate(
                             ).data
                         )
                         provider = mock_provider()
+                    provider_completed = True
+                    document["authoring_progress"] = {
+                        "case": case.id,
+                        "attempts": attempts,
+                        "pending": {
+                            "attempt": attempt_number,
+                            "prompt_sha256": core.sha256_bytes(
+                                prompt.encode("utf-8")
+                            ),
+                            "provider": core.redact_provider_telemetry(provider),
+                        },
+                    }
+                    checkpoint.write_json(document)
                     if (
                         core.tree_sha256(starter_snapshot) != starter_hash
                         or core.tree_sha256(starter_snapshot.parent) != input_hash
                     ):
+                        validation_codes = ["input_integrity"]
                         raise RuntimeError(
                             f"{case.id}: immutable generation input was modified"
                         )
                     if failure := provider_failure(provider):
+                        validation_codes = ["provider"]
                         raise RuntimeError(failure)
-                    semantic = read_generation_artifact(artifact_path, workspace)
+                    try:
+                        semantic = read_generation_artifact(artifact_path, workspace)
+                    except RuntimeError:
+                        validation_status = "retryable_failure"
+                        validation_codes = ["artifact"]
+                        raise
                     validated_artifact = attempt_root / "candidate.spec.ctx"
                     with validated_artifact.open("x", encoding="utf-8") as handle:
                         handle.write(semantic)
                     validation_errors = core.validate_semantic_text(case, semantic)
+                    failure_codes = {"semantic"} if validation_errors else set()
                     verification_command = case.manifest.get("verification_command")
                     if (
                         not case.manifest.get("execution_packet")
@@ -500,14 +604,16 @@ def generate(
                         validation_errors.append(
                             f"{case.id}: generated spec lacks exact verification command"
                         )
+                        failure_codes.add("verification")
                     if case.manifest.get("execution_packet"):
-                        validation_errors.extend(
-                            core.validate_execution_packet_artifact(
-                                case,
-                                validated_artifact,
-                                starter_path=starter_snapshot,
-                            )
+                        packet_errors = core.validate_execution_packet_artifact(
+                            case,
+                            validated_artifact,
+                            starter_path=starter_snapshot,
                         )
+                        validation_errors.extend(packet_errors)
+                        if packet_errors:
+                            failure_codes.add("packet")
                     check_command = [
                         sys.executable,
                         str(SKILL_DIR / "scripts" / "check_conversion.py"),
@@ -525,21 +631,58 @@ def generate(
                     )
                     if check_result.stdout.strip():
                         conversion_check = json.loads(check_result.stdout)
-                    if check_result.returncode != 0:
+                    expected_check = expected_conversion_check(
+                        core.text_metrics(source),
+                        core.text_metrics(semantic),
+                        args.token_encoding,
+                        conversion_check,
+                    )
+                    if conversion_check != expected_check:
+                        raise RuntimeError(
+                            f"{case.id}: conversion checker returned inconsistent evidence"
+                        )
+                    conversion_passed = conversion_check_passed(
+                        expected_check,
+                        args.token_encoding,
+                    )
+                    if (check_result.returncode == 0) != conversion_passed:
+                        raise RuntimeError(
+                            f"{case.id}: conversion checker exit status is inconsistent"
+                        )
+                    if check_result.returncode == 1:
                         detail = check_result.stdout.strip() or check_result.stderr.strip()
                         validation_errors.append(
                             f"{case.id}: conversion check failed: {detail}"
                         )
+                        failure_codes.add("conversion")
+                    elif check_result.returncode != 0:
+                        raise RuntimeError(
+                            f"{case.id}: conversion checker failed operationally"
+                        )
                     if validation_errors:
+                        validation_status = "retryable_failure"
+                        validation_codes = sorted(failure_codes)
                         raise RuntimeError("; ".join(validation_errors))
+                    validation_status = "passed"
+                    validation_codes = []
                 except subprocess.TimeoutExpired:
-                    provider = failed_provider("provider timeout", args.timeout_seconds)
+                    if not provider_completed:
+                        provider = failed_provider(
+                            "provider timeout",
+                            args.timeout_seconds,
+                        )
                     if not semantic:
                         try:
                             semantic = read_generation_artifact(artifact_path, workspace)
                         except RuntimeError:
                             semantic = ""
-                    error = "provider timeout"
+                    error = (
+                        "conversion check timeout"
+                        if provider_completed
+                        else "provider timeout"
+                    )
+                    validation_status = "terminal_failure"
+                    validation_codes = ["timeout"]
                 except Exception as exc:  # noqa: BLE001 - checkpoint failed attempt
                     if not semantic:
                         try:
@@ -557,29 +700,39 @@ def generate(
                             f"{case.id}: immutable generation input was modified"
                         )
                 except (OSError, RuntimeError, ValueError) as exc:
-                    semantic = ""
                     error = f"{type(exc).__name__}: {exc}"
+                    validation_status = "terminal_failure"
+                    validation_codes = ["input_integrity"]
 
-                require_generation_snapshot(
-                    case, expected_snapshot, document["skill_sha256"]
-                )
-                require_code_revision()
+                try:
+                    require_generation_snapshot(
+                        case, expected_snapshot, document["skill_sha256"]
+                    )
+                    require_code_revision()
+                except (OSError, RuntimeError, ValueError) as exc:
+                    error = f"{type(exc).__name__}: {exc}"
+                    validation_status = "terminal_failure"
+                    validation_codes = ["provenance"]
                 provider = core.redact_provider_telemetry(provider)
 
                 attempt_artifact = None
-                if semantic:
+                if semantic and error is None:
                     attempt_artifact = (
                         f"attempts/{case.id}-a{attempt_number}.spec.ctx"
                     )
                     (output / attempt_artifact).write_text(semantic, encoding="utf-8")
-                attempts.append({
+                attempt = {
                     "attempt": attempt_number,
                     "artifact": attempt_artifact,
                     "specification": (
-                        core.attest_text(semantic) if semantic else None
+                        core.attest_text(semantic) if error is None else None
                     ),
                     "semantic": core.text_metrics(semantic) if semantic else None,
                     "conversion_check": conversion_check,
+                    "validation": {
+                        "status": validation_status,
+                        "codes": validation_codes,
+                    },
                     "provenance": {
                         "spec_sha256": (
                             core.sha256_bytes(semantic.encode("utf-8"))
@@ -592,24 +745,27 @@ def generate(
                         "skill_sha256": document["skill_sha256"],
                     },
                     "provider": provider,
-                    # Retry diagnostics can contain fixture content, provider
-                    # stderr, or exception text.  They remain available only
-                    # in-process for the next prompt; checkpoints retain an
-                    # auditable digest and length.
+                    # Raw diagnostics remain in-process only as a retry signal.
+                    # Checkpoints keep fixed validation codes and redacted text.
                     "error": core.redact_error(error),
-                })
+                }
+                attempts.append(attempt)
+                document["authoring_progress"] = {
+                    "case": case.id,
+                    "attempts": attempts,
+                    "pending": None,
+                }
+                checkpoint.write_json(document)
                 if error is None:
                     selected_attempt = attempt_number
                     selected_semantic = semantic
                     destination.write_text(semantic, encoding="utf-8")
                     break
+                if validation_status != "retryable_failure":
+                    break
                 previous_error = error
 
             last_attempt = attempts[-1]
-            semantic = selected_semantic or (
-                (output / last_attempt["artifact"]).read_text(encoding="utf-8")
-                if last_attempt["artifact"] else ""
-            )
             selected_record = (
                 attempts[selected_attempt - 1]
                 if selected_attempt is not None
@@ -621,20 +777,34 @@ def generate(
                 "artifact": f"specs/{case.id}.spec.ctx" if destination.is_file() else None,
                 "selected_attempt": selected_attempt,
                 "attempts": attempts,
-                "specification": core.attest_text(semantic) if semantic else None,
+                "specification": (
+                    selected_record["specification"]
+                    if selected_attempt is not None
+                    else None
+                ),
                 "source": core.text_metrics(source),
-                "semantic": core.text_metrics(semantic) if semantic else None,
-                "compression": {
-                    "bytes_percent": core.compression_percent(
-                        len(source.encode("utf-8")), len(semantic.encode("utf-8"))
-                    ) if semantic else None,
-                    "words_percent": core.compression_percent(
-                        len(source.split()), len(semantic.split())
-                    ) if semantic else None,
-                },
+                "semantic": selected_record["semantic"] if selected_attempt else None,
+                "compression": (
+                    {
+                        "bytes_percent": core.compression_percent(
+                            len(source.encode("utf-8")),
+                            len(selected_semantic.encode("utf-8")),
+                        ),
+                        "words_percent": core.compression_percent(
+                            len(source.split()),
+                            len(selected_semantic.split()),
+                        ),
+                    }
+                    if selected_attempt is not None
+                    else None
+                ),
                 "provenance": {
                     "source_sha256": expected_snapshot["source_sha256"],
-                    "spec_sha256": core.sha256_bytes(semantic.encode("utf-8")) if semantic else None,
+                    "spec_sha256": (
+                        selected_record["provenance"]["spec_sha256"]
+                        if selected_attempt is not None
+                        else None
+                    ),
                     "prompt_sha256": selected_record["provenance"]["prompt_sha256"],
                     "starter_sha256": expected_snapshot["starter_sha256"],
                     "fixture_sha256": expected_snapshot["fixture_sha256"],
@@ -646,6 +816,7 @@ def generate(
                 "error": None if selected_attempt is not None else last_attempt["error"],
             }
             document["results"].append(result)
+            document.pop("authoring_progress", None)
             checkpoint.write_json(document)
             require_code_revision()
     require_code_revision()
@@ -848,6 +1019,7 @@ def generation_report_is_credible(
     cases = generation.get("cases")
     snapshots = generation.get("fixture_snapshot")
     results = generation.get("results")
+    max_attempts = generation.get("max_attempts")
     try:
         corpus = (
             core.discover_cases(cases_dir=cases_dir)
@@ -864,11 +1036,14 @@ def generation_report_is_credible(
         return False
     corpus_ids = {case.id for case in corpus}
     if (
-        generation.get("schema_version") != 2
+        generation.get("schema_version") != 3
+        or "authoring_progress" in generation
         or (
             cases_dir is not None
             and generation.get("case_suite") != cases_dir.name
         )
+        or type(max_attempts) is not int
+        or max_attempts < 1
         or not isinstance(cases, list)
         or not cases
         or any(not isinstance(case, str) for case in cases)
@@ -895,6 +1070,7 @@ def generation_report_is_credible(
 
     hash_pattern = re.compile(r"^[0-9a-f]{64}$")
     cases_by_id = {case.id: case for case in corpus}
+    token_encoding = generation.get("token_encoding")
     for result in results:
         case = cases_by_id[result["case"]]
         snapshot = snapshots[case.id]
@@ -911,36 +1087,88 @@ def generation_report_is_credible(
         except (TypeError, UnicodeError, ValueError):
             return False
         specification_sha256 = core.sha256_bytes(specification.encode("utf-8"))
+        source_metrics = core.text_metrics(source)
+        specification_metrics = core.text_metrics(specification)
+        try:
+            selected_conversion = expected_conversion_check(
+                source_metrics,
+                specification_metrics,
+                token_encoding,
+                attempts[selected_attempt - 1].get("conversion_check")
+                if isinstance(attempts, list)
+                and type(selected_attempt) is int
+                and 1 <= selected_attempt <= len(attempts)
+                and isinstance(attempts[selected_attempt - 1], dict)
+                else None,
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
         if (
-            result.get("error") is not None
-            or not isinstance(selected_attempt, int)
-            or isinstance(selected_attempt, bool)
+            set(result) != {
+                "case",
+                "artifact",
+                "selected_attempt",
+                "attempts",
+                "specification",
+                "source",
+                "semantic",
+                "compression",
+                "provenance",
+                "provider",
+                "error",
+            }
+            or result.get("error") is not None
+            or type(selected_attempt) is not int
             or not isinstance(attempts, list)
             or selected_attempt < 1
-            or selected_attempt > len(attempts)
+            or selected_attempt > max_attempts
+            or len(attempts) != selected_attempt
             or result.get("artifact") != f"specs/{case.id}.spec.ctx"
             or snapshot.get("source_sha256")
             != core.sha256_bytes(source.encode("utf-8"))
-            or result.get("source") != core.text_metrics(source)
+            or result.get("source") != source_metrics
             or not isinstance(provenance, dict)
+            or set(provenance) != {
+                "source_sha256",
+                "spec_sha256",
+                "prompt_sha256",
+                "starter_sha256",
+                "fixture_sha256",
+                "skill_sha256",
+            }
             or provenance.get("source_sha256") != snapshot["source_sha256"]
             or provenance.get("starter_sha256") != snapshot["starter_sha256"]
             or provenance.get("fixture_sha256") != snapshot["fixture_sha256"]
             or provenance.get("skill_sha256") != current_skill_hash
             or provenance.get("spec_sha256") != specification_sha256
             or not hash_pattern.fullmatch(str(provenance.get("prompt_sha256", "")))
-            or result.get("semantic") != core.text_metrics(specification)
+            or result.get("semantic") != specification_metrics
+            or result.get("compression")
+            != {
+                "bytes_percent": core.compression_percent(
+                    len(source.encode("utf-8")),
+                    len(specification.encode("utf-8")),
+                ),
+                "words_percent": core.compression_percent(
+                    len(source.split()),
+                    len(specification.split()),
+                ),
+            }
+            or core.redact_provider_telemetry(result.get("provider"))
+            != result.get("provider")
         ):
             return False
-        if [attempt.get("attempt") for attempt in attempts] != list(
-            range(1, len(attempts) + 1)
-        ):
+        if any(not isinstance(attempt, dict) for attempt in attempts) or [
+            attempt.get("attempt") for attempt in attempts
+        ] != list(range(1, len(attempts) + 1)):
             return False
-        for attempt in attempts:
+        for attempt_number, attempt in enumerate(attempts, start=1):
             attempt_provenance = attempt.get("provenance")
             provider = attempt.get("provider")
             usage = provider.get("usage") if isinstance(provider, dict) else None
+            validation = attempt.get("validation")
             attempt_attestation = attempt.get("specification")
+            selected = attempt_number == selected_attempt
             try:
                 attempt_specification = (
                     core.attested_text(
@@ -958,8 +1186,48 @@ def generation_report_is_credible(
                 if attempt_specification is not None
                 else None
             )
+            attempt_metrics = attempt.get("semantic")
+            try:
+                expected_attempt_conversion = (
+                    expected_conversion_check(
+                        source_metrics,
+                        attempt_metrics,
+                        token_encoding,
+                        attempt.get("conversion_check"),
+                    )
+                    if isinstance(attempt_metrics, dict)
+                    else None
+                )
+            except (KeyError, TypeError, ValueError):
+                return False
+            expected_prompt_sha256 = core.sha256_bytes(
+                generation_prompt(
+                    case,
+                    token_encoding,
+                    None if attempt_number == 1 else "retry",
+                ).encode("utf-8")
+            )
             if (
-                not isinstance(attempt_provenance, dict)
+                set(attempt) != {
+                    "attempt",
+                    "artifact",
+                    "specification",
+                    "semantic",
+                    "conversion_check",
+                    "validation",
+                    "provenance",
+                    "provider",
+                    "error",
+                }
+                or not isinstance(attempt_provenance, dict)
+                or set(attempt_provenance) != {
+                    "source_sha256",
+                    "spec_sha256",
+                    "prompt_sha256",
+                    "starter_sha256",
+                    "fixture_sha256",
+                    "skill_sha256",
+                }
                 or attempt_provenance.get("source_sha256")
                 != snapshot["source_sha256"]
                 or attempt_provenance.get("starter_sha256")
@@ -967,18 +1235,31 @@ def generation_report_is_credible(
                 or attempt_provenance.get("fixture_sha256")
                 != snapshot["fixture_sha256"]
                 or attempt_provenance.get("skill_sha256") != current_skill_hash
-                or not hash_pattern.fullmatch(
-                    str(attempt_provenance.get("prompt_sha256", ""))
-                )
-                or attempt_provenance.get("spec_sha256") != attempt_sha256
-                or attempt.get("semantic")
-                != (
-                    core.text_metrics(attempt_specification)
-                    if attempt_specification is not None
-                    else None
+                or attempt_provenance.get("prompt_sha256")
+                != expected_prompt_sha256
+                or not isinstance(validation, dict)
+                or set(validation) != {"status", "codes"}
+                or validation.get("status") not in AUTHORING_VALIDATION_STATUSES
+                or not isinstance(validation.get("codes"), list)
+                or any(not isinstance(code, str) for code in validation["codes"])
+                or validation["codes"] != sorted(set(validation["codes"]))
+                or (
+                    attempt.get("semantic") is not None
+                    and (
+                        not isinstance(attempt["semantic"], dict)
+                        or set(attempt["semantic"])
+                        != {"bytes", "characters", "words", "lines"}
+                        or any(
+                            not nonnegative_int(value)
+                            for value in attempt["semantic"].values()
+                        )
+                    )
                 )
                 or not isinstance(provider, dict)
                 or not isinstance(provider.get("event_errors"), list)
+                or provider.get("return_code") != 0
+                or provider.get("event_errors") != []
+                or core.redact_provider_telemetry(provider) != provider
                 or not isinstance(usage, dict)
                 or any(
                     not nonnegative_int(usage.get(field))
@@ -990,11 +1271,77 @@ def generation_report_is_credible(
                 )
             ):
                 return False
+            if selected:
+                if (
+                    attempt.get("artifact")
+                    != f"attempts/{case.id}-a{attempt_number}.spec.ctx"
+                    or attempt_specification != specification
+                    or attempt_provenance.get("spec_sha256") != attempt_sha256
+                    or attempt.get("semantic")
+                    != core.text_metrics(attempt_specification)
+                    or attempt.get("conversion_check") != selected_conversion
+                    or attempt.get("error") is not None
+                    or validation != {"status": "passed", "codes": []}
+                ):
+                    return False
+            elif (
+                attempt.get("artifact") is not None
+                or attempt.get("specification") is not None
+                or attempt.get("error") is None
+                or core.redact_error(attempt.get("error")) != attempt.get("error")
+                or validation.get("status") != "retryable_failure"
+                or not validation["codes"]
+                or any(
+                    code not in RETRYABLE_AUTHORING_CODES
+                    for code in validation["codes"]
+                )
+                or (
+                    "artifact" in validation["codes"]
+                    and validation["codes"] != ["artifact"]
+                )
+                or (
+                    validation["codes"] == ["artifact"]
+                    and (
+                        attempt.get("semantic") is not None
+                        or attempt.get("conversion_check") is not None
+                    )
+                )
+                or (
+                    validation["codes"] != ["artifact"]
+                    and (
+                        attempt.get("semantic") is None
+                        or attempt.get("conversion_check")
+                        != expected_attempt_conversion
+                    )
+                )
+                or (
+                    validation["codes"] != ["artifact"]
+                    and ("conversion" in validation["codes"])
+                    != (
+                        not conversion_check_passed(
+                            attempt.get("conversion_check"),
+                            token_encoding,
+                        )
+                    )
+                )
+                or (
+                    attempt.get("semantic") is None
+                    and attempt_provenance.get("spec_sha256") is not None
+                )
+                or (
+                    attempt.get("semantic") is not None
+                    and not hash_pattern.fullmatch(
+                        str(attempt_provenance.get("spec_sha256", ""))
+                    )
+                )
+            ):
+                return False
         selected = attempts[selected_attempt - 1]
+        expected_provider = core.redact_provider_telemetry(
+            aggregate_attempt_providers(attempts, selected_attempt)
+        )
         if (
-            selected.get("error") is not None
-            or selected["provider"].get("return_code") != 0
-            or selected["provider"].get("event_errors") != []
+            result.get("provider") != expected_provider
             or selected["provenance"].get("spec_sha256")
             != provenance["spec_sha256"]
             or selected["provenance"].get("prompt_sha256")

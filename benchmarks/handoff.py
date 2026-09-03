@@ -32,7 +32,7 @@ BENCHMARKS = Path(__file__).resolve().parent
 ROOT = BENCHMARKS.parent
 CASES_DIR = BENCHMARKS / "handoff-cases"
 SKILL_DIR = ROOT / "skills" / "semantic-spec-writer"
-LIFECYCLE_PROTOCOL_PATH = BENCHMARKS / "capsule-lifecycle-v1.prereg.json"
+LIFECYCLE_PROTOCOL_PATH = BENCHMARKS / "capsule-lifecycle-v2.prereg.json"
 VARIANTS = {
     "markdown": "baseline.md",
     "semantic": "semantic.spec.ctx",
@@ -42,6 +42,7 @@ CAPSULE_SCRIPT = SKILL_DIR / "scripts" / "context_capsule.py"
 CAPSULE_CODE_PATHS = (
     "benchmarks/benchmark.py",
     "benchmarks/capsule-lifecycle-v1.prereg.json",
+    "benchmarks/capsule-lifecycle-v2.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
     "benchmarks/lifecycle.py",
@@ -115,10 +116,10 @@ MARKDOWN_CAPSULE_V6 = ComparisonConfig(
     "capsule",
     (("markdown", "Ordinary Markdown"), ("capsule", "Capsule v6")),
 )
-MARKDOWN_CAPSULE_LIFECYCLE_V1 = ComparisonConfig(
-    "markdown-capsule-lifecycle-v1",
+MARKDOWN_CAPSULE_LIFECYCLE_V2 = ComparisonConfig(
+    "markdown-capsule-lifecycle-v2",
     "markdown-context-capsule-lifecycle-comparison",
-    (("packet_version", 3), ("capsule_version", 6), ("lifecycle_version", 1)),
+    (("packet_version", 3), ("capsule_version", 6), ("lifecycle_version", 2)),
     ("markdown", "capsule"),
     "markdown",
     "capsule",
@@ -127,7 +128,7 @@ MARKDOWN_CAPSULE_LIFECYCLE_V1 = ComparisonConfig(
 CAPSULE_COMPARISONS = (
     CAPSULE_V6,
     MARKDOWN_CAPSULE_V6,
-    MARKDOWN_CAPSULE_LIFECYCLE_V1,
+    MARKDOWN_CAPSULE_LIFECYCLE_V2,
 )
 COMPARISONS = {
     config.name: config
@@ -150,17 +151,17 @@ import benchmark as core  # noqa: E402
 import lifecycle as lifecycle_benchmark  # noqa: E402
 
 
-LIFECYCLE_CLAIM_PROTOCOL = "markdown-capsule-full-lifecycle-dominance-v1"
+LIFECYCLE_CLAIM_PROTOCOL = "markdown-capsule-full-lifecycle-dominance-v2"
 LIFECYCLE_RELEASE_GATE = (
     "full corpus and exact paired schedule",
-    "one successful authoring attempt per fixture with complete token telemetry",
+    "successful authoring within two attempts per fixture with all usage charged",
     "Capsule succeeds with every hidden test and acceptance check in every pair",
     "Capsule quality is componentwise no worse in every pair",
     "Capsule action gate passes in every implementation",
     "Capsule one-use lifecycle total tokens are lower in every pair",
     "fixture-cluster bootstrap confidence interval lower bound is greater than zero",
     "measured three-use Capsule lifecycle total tokens are lower",
-    "no provider, verification, provenance, privacy, or recorded run errors",
+    "no terminal authoring, provider, verification, provenance, privacy, or recorded run errors",
 )
 
 
@@ -176,7 +177,7 @@ def lifecycle_protocol_is_supported(value: Any) -> bool:
         "timeout_seconds",
         "implementation_repetitions",
         "seed",
-        "authoring_attempts_per_fixture",
+        "authoring_max_attempts_per_fixture",
         "baseline_authoring",
         "candidate_authoring",
         "primary_metric",
@@ -194,9 +195,9 @@ def lifecycle_protocol_is_supported(value: Any) -> bool:
 
     return bool(
         type(value.get("schema_version")) is int
-        and value["schema_version"] == 1
+        and value["schema_version"] == 2
         and value.get("protocol_id") == LIFECYCLE_CLAIM_PROTOCOL
-        and value.get("comparison") == MARKDOWN_CAPSULE_LIFECYCLE_V1.name
+        and value.get("comparison") == MARKDOWN_CAPSULE_LIFECYCLE_V2.name
         and value.get("provider") == "codex"
         and isinstance(value.get("model"), str)
         and value["model"]
@@ -206,8 +207,8 @@ def lifecycle_protocol_is_supported(value: Any) -> bool:
         and positive_int(value.get("implementation_repetitions"))
         and value["implementation_repetitions"] >= 3
         and positive_int(value.get("seed"))
-        and type(value.get("authoring_attempts_per_fixture")) is int
-        and value["authoring_attempts_per_fixture"] == 1
+        and type(value.get("authoring_max_attempts_per_fixture")) is int
+        and value["authoring_max_attempts_per_fixture"] == 2
         and isinstance(corpus, list)
         and corpus
         and all(isinstance(case, str) and case for case in corpus)
@@ -235,7 +236,10 @@ def lifecycle_protocol_is_supported(value: Any) -> bool:
         and bootstrap["confidence"] == 0.95
         and value.get("release_gate") == list(LIFECYCLE_RELEASE_GATE)
         and value.get("retry_policy")
-        == "no rerun or threshold change after observing outcomes"
+        == (
+            "at most one in-run repair with all attempt usage charged; "
+            "no benchmark rerun or threshold change after observing outcomes"
+        )
     )
 
 
@@ -288,8 +292,8 @@ def capsule_schema_version(config: ComparisonConfig) -> int:
         return 4
     if config == MARKDOWN_CAPSULE_V6:
         return 5
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
-        return 6
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
+        return 8
     raise ValueError(f"{config.name}: not a Capsule comparison")
 
 
@@ -676,7 +680,7 @@ def case_snapshot(
             },
         }
 
-    generated_packet = config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+    generated_packet = config == MARKDOWN_CAPSULE_LIFECYCLE_V2
     if packet_bytes is None:
         if generated_packet:
             raise RuntimeError(f"{case.id}: lifecycle run lacks a generated Packet v3")
@@ -786,7 +790,7 @@ def require_case_snapshot(
 ) -> None:
     config = comparison_config(comparison)
     packet_bytes = None
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
         try:
             packet_bytes = core.attested_bytes(
                 expected.get("packet") if isinstance(expected, dict) else None,
@@ -998,7 +1002,7 @@ def create_document(
             context_capsule_module().CAPSULE_EXECUTION_PROFILE
         )
         document["code_revision"] = code_revision
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
         if authoring is None:
             raise RuntimeError("lifecycle comparison requires authoring evidence")
         protocol, protocol_bytes = lifecycle_protocol()
@@ -1021,7 +1025,12 @@ def generated_packet_bytes(
     """Extract every selected generated Packet from exact embedded attestations."""
 
     results = authoring.get("results")
-    if not isinstance(results, list):
+    max_attempts = authoring.get("max_attempts")
+    if (
+        not isinstance(results, list)
+        or type(max_attempts) is not int
+        or max_attempts < 1
+    ):
         raise RuntimeError("authoring result has no generated artifacts")
     by_case = {
         result.get("case"): result
@@ -1033,30 +1042,391 @@ def generated_packet_bytes(
     packets: dict[str, bytes] = {}
     for case in cases:
         result = by_case[case.id]
-        if result.get("selected_attempt") != 1 or result.get("error") is not None:
-            raise RuntimeError(f"{case.id}: authoring did not select its first attempt")
+        selected_attempt = result.get("selected_attempt")
+        if (
+            type(selected_attempt) is not int
+            or not 1 <= selected_attempt <= max_attempts
+            or result.get("error") is not None
+        ):
+            raise RuntimeError(f"{case.id}: authoring did not produce a valid handoff")
         attempts = result.get("attempts")
-        if not isinstance(attempts, list) or len(attempts) != 1:
-            raise RuntimeError(f"{case.id}: authoring must contain exactly one attempt")
+        if (
+            not isinstance(attempts, list)
+            or len(attempts) != selected_attempt
+            or any(not isinstance(attempt, dict) for attempt in attempts)
+        ):
+            raise RuntimeError(f"{case.id}: authoring attempt evidence is incomplete")
+        selected = attempts[selected_attempt - 1]
         text = core.attested_text(
             result.get("specification"),
             f"{case.id} generated Packet v3",
             max_bytes=lifecycle_benchmark.MAX_GENERATED_ARTIFACT_BYTES,
         )
-        if attempts[0].get("specification") != result.get("specification"):
+        if selected.get("specification") != result.get("specification"):
             raise RuntimeError(f"{case.id}: selected Packet evidence does not match")
         packets[case.id] = text.encode("utf-8")
     return packets
+
+
+def _safe_authoring_metrics(value: Any) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    fields = ("bytes", "characters", "words", "lines")
+    if any(
+        type(value.get(field)) is not int or value[field] < 0
+        for field in fields
+    ):
+        return None
+    return {field: value[field] for field in fields}
+
+
+def _safe_authoring_provenance(value: Any) -> dict[str, str | None] | None:
+    if not isinstance(value, dict):
+        return None
+    fields = (
+        "source_sha256",
+        "spec_sha256",
+        "prompt_sha256",
+        "starter_sha256",
+        "fixture_sha256",
+        "skill_sha256",
+    )
+    return {
+        field: (
+            item
+            if isinstance((item := value.get(field)), str)
+            and re.fullmatch(r"[0-9a-f]{64}", item)
+            else None
+        )
+        for field in fields
+    }
+
+
+def _safe_conversion_check(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+
+    def dimensions(item: Any) -> dict[str, int] | None:
+        if not isinstance(item, dict):
+            return None
+        fields = ("bytes", "words", "tokens")
+        return {
+            field: number
+            for field in fields
+            if type((number := item.get(field))) is int and number >= 0
+        }
+
+    source = dimensions(value.get("source"))
+    output = dimensions(value.get("output"))
+    if source is None or output is None:
+        return None
+    result: dict[str, Any] = {
+        "encoding": (
+            value.get("encoding")
+            if value.get("encoding") is None
+            or isinstance(value.get("encoding"), str)
+            else None
+        ),
+        "source": source,
+        "output": output,
+    }
+    for field in ("smaller_bytes", "smaller_words", "smaller_tokens"):
+        if type(value.get(field)) is bool:
+            result[field] = value[field]
+    return result
+
+
+def _safe_authoring_validation(value: Any) -> dict[str, Any]:
+    allowed_codes = (
+        lifecycle_benchmark.RETRYABLE_AUTHORING_CODES
+        | lifecycle_benchmark.TERMINAL_AUTHORING_CODES
+    )
+    if not isinstance(value, dict):
+        return {"status": "terminal_failure", "codes": ["runtime"]}
+    status = value.get("status")
+    codes = value.get("codes")
+    return {
+        "status": (
+            status
+            if isinstance(status, str)
+            and status in lifecycle_benchmark.AUTHORING_VALIDATION_STATUSES
+            else "terminal_failure"
+        ),
+        "codes": sorted({
+            code
+            for code in codes
+            if isinstance(code, str) and code in allowed_codes
+        }) if isinstance(codes, list) else ["runtime"],
+    }
+
+
+def _sanitize_authoring_attempt(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "attempt": None,
+            "artifact": None,
+            "specification": None,
+            "semantic": None,
+            "conversion_check": None,
+            "validation": {"status": "terminal_failure", "codes": ["runtime"]},
+            "provenance": None,
+            "provider": core.redact_provider_telemetry({}),
+            "error": core.redact_error("malformed authoring attempt"),
+        }
+    provider = value.get("provider")
+    return {
+        "attempt": value.get("attempt") if type(value.get("attempt")) is int else None,
+        "artifact": None,
+        "specification": None,
+        "semantic": _safe_authoring_metrics(value.get("semantic")),
+        "conversion_check": _safe_conversion_check(value.get("conversion_check")),
+        "validation": _safe_authoring_validation(value.get("validation")),
+        "provenance": _safe_authoring_provenance(value.get("provenance")),
+        "provider": core.redact_provider_telemetry(
+            provider if isinstance(provider, dict) else {}
+        ),
+        "error": core.redact_error(value.get("error")),
+    }
+
+
+def sanitize_lifecycle_authoring_failure(
+    authoring: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Keep billed telemetry and hashes without retaining model-authored bytes."""
+
+    if not isinstance(authoring, dict):
+        return None
+    safe: dict[str, Any] = {}
+    for field in (
+        "kind",
+        "run_id",
+        "created_at",
+        "provider",
+        "model",
+        "reasoning_effort",
+        "case_suite",
+    ):
+        if isinstance(authoring.get(field), str):
+            safe[field] = authoring[field]
+    for field in ("schema_version", "timeout_seconds", "max_attempts"):
+        if type(authoring.get(field)) is int:
+            safe[field] = authoring[field]
+    token_encoding = authoring.get("token_encoding")
+    if token_encoding is None or isinstance(token_encoding, str):
+        safe["token_encoding"] = token_encoding
+    cases = authoring.get("cases")
+    if isinstance(cases, list) and all(isinstance(case, str) for case in cases):
+        safe["cases"] = list(cases)
+    if type(authoring.get("full_corpus")) is bool:
+        safe["full_corpus"] = authoring["full_corpus"]
+    skill_sha256 = authoring.get("skill_sha256")
+    if isinstance(skill_sha256, str) and re.fullmatch(
+        r"[0-9a-f]{64}",
+        skill_sha256,
+    ):
+        safe["skill_sha256"] = skill_sha256
+    results = authoring.get("results")
+    safe["results"] = []
+    if isinstance(results, list):
+        for value in results:
+            if not isinstance(value, dict):
+                continue
+            attempts = value.get("attempts")
+            safe["results"].append({
+                "case": value.get("case") if isinstance(value.get("case"), str) else None,
+                "artifact": None,
+                "selected_attempt": (
+                    value.get("selected_attempt")
+                    if type(value.get("selected_attempt")) is int
+                    else None
+                ),
+                "attempts": [
+                    _sanitize_authoring_attempt(item)
+                    for item in attempts
+                ] if isinstance(attempts, list) else [],
+                "specification": None,
+                "source": _safe_authoring_metrics(value.get("source")),
+                "semantic": _safe_authoring_metrics(value.get("semantic")),
+                "compression": {
+                    field: number
+                    for field in ("bytes_percent", "words_percent")
+                    if isinstance(value.get("compression"), dict)
+                    and isinstance(
+                        (number := value["compression"].get(field)),
+                        (int, float),
+                    )
+                    and not isinstance(number, bool)
+                },
+                "provenance": _safe_authoring_provenance(value.get("provenance")),
+                "provider": core.redact_provider_telemetry(
+                    value.get("provider")
+                    if isinstance(value.get("provider"), dict)
+                    else {}
+                ),
+                "error": core.redact_error(value.get("error")),
+            })
+    progress = authoring.get("authoring_progress")
+    if isinstance(progress, dict):
+        pending = progress.get("pending")
+        safe["authoring_progress"] = {
+            "case": (
+                progress.get("case")
+                if isinstance(progress.get("case"), str)
+                else None
+            ),
+            "attempts": [
+                _sanitize_authoring_attempt(item)
+                for item in progress.get("attempts", [])
+            ] if isinstance(progress.get("attempts"), list) else [],
+            "pending": (
+                {
+                    "attempt": (
+                        pending.get("attempt")
+                        if type(pending.get("attempt")) is int
+                        else None
+                    ),
+                    "prompt_sha256": (
+                        pending.get("prompt_sha256")
+                        if isinstance(pending.get("prompt_sha256"), str)
+                        else None
+                    ),
+                    "provider": core.redact_provider_telemetry(
+                        pending.get("provider")
+                        if isinstance(pending.get("provider"), dict)
+                        else {}
+                    ),
+                }
+                if isinstance(pending, dict)
+                else None
+            ),
+        }
+    return safe
+
+
+def _sanitized_authoring_attempt_passed(
+    value: Any,
+    selected_attempt: int,
+) -> bool:
+    if not isinstance(value, dict):
+        return False
+    provider = value.get("provider")
+    usage = provider.get("usage") if isinstance(provider, dict) else None
+    provenance = value.get("provenance")
+    conversion = value.get("conversion_check")
+    conversion_source = (
+        conversion.get("source") if isinstance(conversion, dict) else None
+    )
+    conversion_output = (
+        conversion.get("output") if isinstance(conversion, dict) else None
+    )
+    return bool(
+        value.get("attempt") == selected_attempt
+        and value.get("validation") == {"status": "passed", "codes": []}
+        and value.get("error") is None
+        and _safe_authoring_metrics(value.get("semantic")) is not None
+        and isinstance(conversion, dict)
+        and isinstance(conversion_source, dict)
+        and set(conversion_source) >= {"bytes", "words"}
+        and isinstance(conversion_output, dict)
+        and set(conversion_output) >= {"bytes", "words"}
+        and isinstance(provenance, dict)
+        and all(isinstance(item, str) for item in provenance.values())
+        and isinstance(provider, dict)
+        and provider.get("return_code") == 0
+        and provider.get("event_errors") == []
+        and isinstance(usage, dict)
+        and all(
+            type(usage.get(field)) is int and usage[field] >= 0
+            for field in (
+                "input_tokens",
+                "uncached_input_tokens",
+                "output_tokens",
+            )
+        )
+    )
+
+
+def persist_lifecycle_authoring_failure(
+    failure_output: Path,
+    cases: list[core.BenchmarkCase],
+    code_revision: dict[str, Any] | None,
+    authoring: dict[str, Any] | None,
+    protocol: dict[str, Any],
+    protocol_bytes: bytes,
+    phase: str,
+    failure: Exception,
+) -> None:
+    """Persist redacted evidence before temporary authoring state is removed."""
+
+    sanitized_authoring = sanitize_lifecycle_authoring_failure(authoring)
+    successful_cases: set[str] = set()
+    results = (
+        sanitized_authoring.get("results")
+        if isinstance(sanitized_authoring, dict)
+        else None
+    )
+    if isinstance(results, list):
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            selected_attempt = result.get("selected_attempt")
+            attempts = result.get("attempts")
+            selected = (
+                attempts[selected_attempt - 1]
+                if type(selected_attempt) is int
+                and isinstance(attempts, list)
+                and 1 <= selected_attempt <= len(attempts)
+                else None
+            )
+            if (
+                isinstance(result.get("case"), str)
+                and type(selected_attempt) is int
+                and isinstance(attempts, list)
+                and 1 <= selected_attempt <= len(attempts)
+                and _sanitized_authoring_attempt_passed(
+                    selected,
+                    selected_attempt,
+                )
+                and result.get("error") is None
+            ):
+                successful_cases.add(result["case"])
+
+    evidence = {
+        "schema_version": 1,
+        "kind": "capsule-lifecycle-authoring-failure",
+        "comparison": MARKDOWN_CAPSULE_LIFECYCLE_V2.name,
+        "created_at": datetime.now(UTC).isoformat(),
+        "phase": phase,
+        "failure": core.redact_error(f"{type(failure).__name__}: {failure}"),
+        "protocol": core.attest_bytes(protocol_bytes),
+        "protocol_sha256": core.sha256_bytes(protocol_bytes),
+        "claim_protocol": protocol["protocol_id"],
+        "code_revision": code_revision,
+        "failed_cases": [
+            case.id for case in cases if case.id not in successful_cases
+        ],
+        "authoring": sanitized_authoring,
+    }
+    try:
+        with core.open_result_checkpoint(failure_output, evidence, force=False):
+            pass
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            "lifecycle authoring failed and redacted failure evidence "
+            "could not be persisted"
+        ) from exc
 
 
 def generate_lifecycle_authoring(
     args: argparse.Namespace,
     cases: list[core.BenchmarkCase],
     code_revision: dict[str, Any] | None,
+    failure_output: Path,
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
-    """Run one fully accounted authoring attempt for each benchmark fixture."""
+    """Run the bounded, fully accounted authoring process for every fixture."""
 
     with tempfile.TemporaryDirectory(prefix="capsule-authoring-bench-") as directory:
+        protocol, protocol_bytes = lifecycle_protocol()
         generation_args = argparse.Namespace(
             provider=args.provider,
             model=args.model,
@@ -1065,16 +1435,74 @@ def generate_lifecycle_authoring(
             cases_dir=CASES_DIR,
             timeout_seconds=args.timeout_seconds,
             token_encoding=None,
-            max_attempts=1,
+            max_attempts=protocol["authoring_max_attempts_per_fixture"],
             output=Path(directory) / "generated",
         )
-        generation_output = lifecycle_benchmark.generate(
-            generation_args,
-            code_revision=code_revision,
-        )
-        with core.open_pinned_json(generation_output / "generation.json") as pinned:
-            authoring = json.loads(json.dumps(pinned.document))
-    return authoring, generated_packet_bytes(authoring, cases)
+        authoring = None
+        try:
+            generation_output = lifecycle_benchmark.generate(
+                generation_args,
+                code_revision=code_revision,
+            )
+            with core.open_pinned_json(generation_output / "generation.json") as pinned:
+                loaded = json.loads(json.dumps(pinned.document))
+                authoring = loaded if isinstance(loaded, dict) else None
+        except Exception as exc:  # noqa: BLE001 - preserve failed benchmark evidence
+            partial_result = generation_args.output / "generation.json"
+            if partial_result.is_file():
+                try:
+                    with core.open_pinned_json(partial_result) as pinned:
+                        loaded = json.loads(json.dumps(pinned.document))
+                        authoring = loaded if isinstance(loaded, dict) else None
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    authoring = None
+            persist_lifecycle_authoring_failure(
+                failure_output,
+                cases,
+                code_revision,
+                authoring,
+                protocol,
+                protocol_bytes,
+                "generation",
+                exc,
+            )
+            raise RuntimeError(
+                "lifecycle authoring failed; redacted evidence written to "
+                f"{failure_output}"
+            ) from exc
+        try:
+            if not isinstance(authoring, dict):
+                raise TypeError("lifecycle authoring produced no evidence")
+            packets = generated_packet_bytes(authoring, cases)
+            if (
+                args.provider == "codex"
+                and not lifecycle_benchmark.generation_report_is_credible(
+                    authoring,
+                    cases_dir=CASES_DIR,
+                    skill_dir=SKILL_DIR,
+                )
+            ):
+                raise RuntimeError("lifecycle authoring evidence is not credible")
+            if args.provider == "codex" and lifecycle_authoring_provider_error_count(
+                {"authoring": authoring}
+            ):
+                raise RuntimeError("lifecycle authoring contains provider errors")
+        except (AttributeError, RuntimeError, TypeError, UnicodeError, ValueError) as exc:
+            persist_lifecycle_authoring_failure(
+                failure_output,
+                cases,
+                code_revision,
+                authoring,
+                protocol,
+                protocol_bytes,
+                "validation",
+                exc,
+            )
+            raise RuntimeError(
+                "lifecycle authoring failed; redacted evidence written to "
+                f"{failure_output}"
+            ) from exc
+    return authoring, packets
 
 
 def paired_job_schedule(
@@ -1140,10 +1568,33 @@ def run(args: argparse.Namespace) -> Path:
         )
     authoring = None
     packet_bytes_by_case = None
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    lifecycle_failure_output = output.with_name(
+        f"{output.stem}.authoring-failure.json"
+    )
+    lifecycle_protocol_document = None
+    lifecycle_protocol_bytes = None
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
+        if args.force:
+            raise ValueError("lifecycle comparison does not permit --force")
+        if not output.parent.is_dir():
+            raise ValueError("lifecycle output directory must already exist")
+        for reserved_output in (output, lifecycle_failure_output):
+            try:
+                reserved_output.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise RuntimeError(
+                    f"cannot inspect lifecycle output path: {reserved_output}"
+                ) from exc
+            raise RuntimeError(
+                f"lifecycle output path already exists: {reserved_output}"
+            )
         if variant_names != list(config.variants):
             raise ValueError("lifecycle comparison requires both benchmark arms")
-        protocol, _ = lifecycle_protocol()
+        protocol, protocol_bytes = lifecycle_protocol()
+        lifecycle_protocol_document = protocol
+        lifecycle_protocol_bytes = protocol_bytes
         if args.provider == "codex" and any((
             args.model != protocol.get("model"),
             args.reasoning_effort != protocol.get("reasoning_effort"),
@@ -1157,30 +1608,83 @@ def run(args: argparse.Namespace) -> Path:
             args,
             cases,
             code_revision,
+            lifecycle_failure_output,
+        )
+    try:
+        if code_revision is not None:
+            core.require_git_worktree_revision(code_revision, CAPSULE_CODE_PATHS)
+        document = create_document(
+            args,
+            cases,
+            variant_names,
+            config,
+            code_revision=code_revision,
+            packet_bytes_by_case=packet_bytes_by_case,
+            authoring=authoring,
         )
         if code_revision is not None:
             core.require_git_worktree_revision(code_revision, CAPSULE_CODE_PATHS)
-    document = create_document(
-        args,
-        cases,
-        variant_names,
-        config,
-        code_revision=code_revision,
-        packet_bytes_by_case=packet_bytes_by_case,
-        authoring=authoring,
-    )
-    if code_revision is not None:
-        core.require_git_worktree_revision(code_revision, CAPSULE_CODE_PATHS)
-    jobs = paired_job_schedule(
-        cases,
-        args.repetitions,
-        variant_names,
-        args.seed,
-    )
+        jobs = paired_job_schedule(
+            cases,
+            args.repetitions,
+            variant_names,
+            args.seed,
+        )
+    except Exception as exc:
+        if (
+            config == MARKDOWN_CAPSULE_LIFECYCLE_V2
+            and isinstance(authoring, dict)
+            and isinstance(lifecycle_protocol_document, dict)
+            and isinstance(lifecycle_protocol_bytes, bytes)
+        ):
+            persist_lifecycle_authoring_failure(
+                lifecycle_failure_output,
+                cases,
+                code_revision,
+                authoring,
+                lifecycle_protocol_document,
+                lifecycle_protocol_bytes,
+                "construction",
+                exc,
+            )
+            raise RuntimeError(
+                "lifecycle construction failed; redacted evidence written to "
+                f"{lifecycle_failure_output}"
+            ) from exc
+        raise
+
+    try:
+        checkpoint = core.open_result_checkpoint(
+            output,
+            document,
+            force=args.force,
+        )
+    except Exception as exc:
+        if (
+            config == MARKDOWN_CAPSULE_LIFECYCLE_V2
+            and isinstance(authoring, dict)
+            and isinstance(lifecycle_protocol_document, dict)
+            and isinstance(lifecycle_protocol_bytes, bytes)
+        ):
+            persist_lifecycle_authoring_failure(
+                lifecycle_failure_output,
+                cases,
+                code_revision,
+                authoring,
+                lifecycle_protocol_document,
+                lifecycle_protocol_bytes,
+                "construction",
+                exc,
+            )
+            raise RuntimeError(
+                "lifecycle construction failed; redacted evidence written to "
+                f"{lifecycle_failure_output}"
+            ) from exc
+        raise
 
     with (
         tempfile.TemporaryDirectory(prefix="execution-packet-bench-") as directory,
-        core.open_result_checkpoint(output, document, force=args.force) as checkpoint,
+        checkpoint,
     ):
         root = Path(directory)
         for index, (case, repetition, variant) in enumerate(jobs, start=1):
@@ -2095,7 +2599,7 @@ def _validated_capsule_snapshot(
         "prompts",
         "capsule",
     }
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
         expected_keys.add("packet")
     if not isinstance(snapshot, dict) or set(snapshot) != expected_keys:
         return None
@@ -2106,7 +2610,7 @@ def _validated_capsule_snapshot(
                 snapshot["packet"],
                 f"{case.id} generated Packet v3",
             )
-            if config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+            if config == MARKDOWN_CAPSULE_LIFECYCLE_V2
             else core.fixture_snapshot_file(
                 fixture_snapshot,
                 VARIANTS["packet"],
@@ -2254,11 +2758,11 @@ def lifecycle_authoring_is_credible(
     if (
         recorded_protocol != protocol_bytes
         or document.get("protocol_sha256") != core.sha256_bytes(protocol_bytes)
-        or protocol.get("schema_version") != 1
+        or protocol.get("schema_version") != 2
         or protocol.get("protocol_id") != LIFECYCLE_CLAIM_PROTOCOL
-        or protocol.get("comparison") != MARKDOWN_CAPSULE_LIFECYCLE_V1.name
+        or protocol.get("comparison") != MARKDOWN_CAPSULE_LIFECYCLE_V2.name
         or protocol.get("provider") != "codex"
-        or protocol.get("authoring_attempts_per_fixture") != 1
+        or protocol.get("authoring_max_attempts_per_fixture") != 2
         or protocol.get("baseline_authoring")
         != "source-markdown-direct-zero-model-calls"
         or protocol.get("candidate_authoring")
@@ -2279,7 +2783,8 @@ def lifecycle_authoring_is_credible(
         or authoring.get("model") != document.get("model")
         or authoring.get("reasoning_effort") != document.get("reasoning_effort")
         or authoring.get("timeout_seconds") != document.get("timeout_seconds")
-        or authoring.get("max_attempts") != 1
+        or authoring.get("max_attempts")
+        != protocol.get("authoring_max_attempts_per_fixture")
         or authoring.get("token_encoding") is not None
         or authoring.get("full_corpus") is not True
         or authoring.get("cases") != document.get("cases")
@@ -2300,7 +2805,17 @@ def lifecycle_authoring_is_credible(
                 f"{case.id} lifecycle Packet v3",
             )
             result = by_case[case.id]
-            attempt = result["attempts"][0]
+            attempts = result.get("attempts")
+            selected_attempt = result.get("selected_attempt")
+            if (
+                not isinstance(attempts, list)
+                or type(selected_attempt) is not int
+                or not 1 <= selected_attempt <= 2
+                or len(attempts) != selected_attempt
+            ):
+                return False
+            attempt = attempts[selected_attempt - 1]
+            source_metrics = result["source"]
             if (
                 set(result) != {
                     "case",
@@ -2315,16 +2830,6 @@ def lifecycle_authoring_is_credible(
                     "provider",
                     "error",
                 }
-                or set(attempt) != {
-                    "attempt",
-                    "artifact",
-                    "specification",
-                    "semantic",
-                    "conversion_check",
-                    "provenance",
-                    "provider",
-                    "error",
-                }
                 or set(result["provenance"]) != {
                     "source_sha256",
                     "spec_sha256",
@@ -2333,37 +2838,83 @@ def lifecycle_authoring_is_credible(
                     "fixture_sha256",
                     "skill_sha256",
                 }
-                or set(attempt["provenance"]) != set(result["provenance"])
                 or core.redact_provider_telemetry(result["provider"])
                 != result["provider"]
-                or core.redact_provider_telemetry(attempt["provider"])
-                != attempt["provider"]
             ):
                 return False
+            for attempt_number, recorded_attempt in enumerate(attempts, start=1):
+                expected_attempt_prompt = core.sha256_bytes(
+                    lifecycle_benchmark.generation_prompt(
+                        case,
+                        None,
+                        None if attempt_number == 1 else "retry",
+                    ).encode("utf-8")
+                )
+                attempt_metrics = recorded_attempt.get("semantic")
+                expected_attempt_conversion = (
+                    lifecycle_benchmark.expected_conversion_check(
+                        source_metrics,
+                        attempt_metrics,
+                        None,
+                    )
+                    if recorded_attempt.get("conversion_check") is not None
+                    and isinstance(attempt_metrics, dict)
+                    else None
+                )
+                if (
+                    set(recorded_attempt) != {
+                        "attempt",
+                        "artifact",
+                        "specification",
+                        "semantic",
+                        "conversion_check",
+                        "validation",
+                        "provenance",
+                        "provider",
+                        "error",
+                    }
+                    or set(recorded_attempt["provenance"])
+                    != set(result["provenance"])
+                    or recorded_attempt["attempt"] != attempt_number
+                    or recorded_attempt["provenance"].get("prompt_sha256")
+                    != expected_attempt_prompt
+                    or core.redact_provider_telemetry(recorded_attempt["provider"])
+                    != recorded_attempt["provider"]
+                    or recorded_attempt.get("conversion_check")
+                    != expected_attempt_conversion
+                    or (
+                        attempt_number < selected_attempt
+                        and (
+                            recorded_attempt.get("error") is None
+                            or core.redact_error(recorded_attempt["error"])
+                            != recorded_attempt["error"]
+                        )
+                    )
+                    or (
+                        attempt_number == selected_attempt
+                        and recorded_attempt.get("error") is not None
+                    )
+                ):
+                    return False
             expected_provider = core.redact_provider_telemetry(
                 lifecycle_benchmark.aggregate_attempt_providers(
                     result["attempts"],
-                    1,
+                    selected_attempt,
                 )
             )
             expected_prompt_sha256 = core.sha256_bytes(
-                lifecycle_benchmark.generation_prompt(case, None).encode("utf-8")
+                lifecycle_benchmark.generation_prompt(
+                    case,
+                    None,
+                    None if selected_attempt == 1 else "retry",
+                ).encode("utf-8")
             )
-            source_metrics = result["source"]
             semantic_metrics = result["semantic"]
-            expected_conversion = {
-                "encoding": None,
-                "source": {
-                    "bytes": source_metrics["bytes"],
-                    "words": source_metrics["words"],
-                },
-                "output": {
-                    "bytes": semantic_metrics["bytes"],
-                    "words": semantic_metrics["words"],
-                },
-                "smaller_bytes": semantic_metrics["bytes"] < source_metrics["bytes"],
-                "smaller_words": semantic_metrics["words"] < source_metrics["words"],
-            }
+            expected_conversion = lifecycle_benchmark.expected_conversion_check(
+                source_metrics,
+                semantic_metrics,
+                None,
+            )
             expected_compression = {
                 "bytes_percent": core.compression_percent(
                     source_metrics["bytes"], semantic_metrics["bytes"]
@@ -2477,7 +3028,7 @@ def report_run_is_credible(
         or document.get("static") != current_static
         or not results
         or (
-            config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+            config == MARKDOWN_CAPSULE_LIFECYCLE_V2
             and not lifecycle_authoring_is_credible(document, corpus)
         )
         or (
@@ -3143,12 +3694,33 @@ def lifecycle_authoring_total(document: dict[str, Any], name: str) -> float | No
     return round(sum(float(value) for value in values if value is not None), 3)
 
 
+def lifecycle_authoring_provider_error_count(document: dict[str, Any]) -> int:
+    authoring = document.get("authoring")
+    results = authoring.get("results") if isinstance(authoring, dict) else None
+    if not isinstance(results, list):
+        return 1
+    count = 0
+    for result in results:
+        attempts = result.get("attempts") if isinstance(result, dict) else None
+        if not isinstance(attempts, list):
+            count += 1
+            continue
+        count += sum(
+            not isinstance(attempt, dict)
+            or not isinstance(attempt.get("provider"), dict)
+            or attempt["provider"].get("return_code") != 0
+            or attempt["provider"].get("event_errors") != []
+            for attempt in attempts
+        )
+    return count
+
+
 def lifecycle_comparison(document: dict[str, Any], name: str) -> dict[str, Any]:
     """Compare one-use workflows, charging full authoring cost to Capsule."""
 
     config = document_comparison(document)
     pairs = paired_result_index(document.get("results", []))
-    if config != MARKDOWN_CAPSULE_LIFECYCLE_V1 or pairs is None:
+    if config != MARKDOWN_CAPSULE_LIFECYCLE_V2 or pairs is None:
         return empty_comparison()
     by_case: dict[str, list[float]] = {}
     reductions: list[float] = []
@@ -3201,7 +3773,7 @@ def lifecycle_quality_dominates_every_pair(
 ) -> bool:
     config = document_comparison(document)
     pairs = paired_result_index(document.get("results", []))
-    if config != MARKDOWN_CAPSULE_LIFECYCLE_V1 or pairs is None:
+    if config != MARKDOWN_CAPSULE_LIFECYCLE_V2 or pairs is None:
         return False
     cases = document.get("cases")
     repetitions = document.get("repetitions")
@@ -3269,6 +3841,11 @@ def lifecycle_claim_limitations(
     authoring_tokens = lifecycle_authoring_total(document, "combined_tokens")
     if authoring_tokens is None or authoring_tokens <= 0:
         limitations.append("Capsule authoring token cost is missing")
+    authoring_provider_errors = lifecycle_authoring_provider_error_count(document)
+    if authoring_provider_errors:
+        limitations.append(
+            f"authoring provider errors occurred in {authoring_provider_errors} attempt(s)"
+        )
     aggregates = {variant: aggregate(results, variant) for variant in config.variants}
     candidate_measured = aggregates[config.primary_candidate]["total_combined_tokens"]
     if authoring_tokens is not None:
@@ -3355,7 +3932,7 @@ def capsule_claim_limitations(
 ) -> list[str]:
     """Enumerate every failed measured-corpus claim predicate."""
 
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
         return lifecycle_claim_limitations(document, results, credible, config)
 
     limitations: list[str] = []
@@ -3462,7 +4039,7 @@ def _lifecycle_value(name: str, value: float | int | None) -> str:
 
 
 def capsule_lifecycle_report(document: dict[str, Any]) -> str:
-    config = MARKDOWN_CAPSULE_LIFECYCLE_V1
+    config = MARKDOWN_CAPSULE_LIFECYCLE_V2
     results = document["results"]
     aggregates = {variant: aggregate(results, variant) for variant in config.variants}
     comparisons = {
@@ -3476,9 +4053,14 @@ def capsule_lifecycle_report(document: dict[str, Any]) -> str:
     expected_pairs = len(document["cases"]) * repetitions
     authoring = document["authoring"]
     authored = sum(
-        result.get("error") is None and result.get("selected_attempt") == 1
+        result.get("error") is None
+        and type(result.get("selected_attempt")) is int
         for result in authoring["results"]
     )
+    authoring_calls = sum(
+        len(result.get("attempts", [])) for result in authoring["results"]
+    )
+    max_authoring_attempts = authoring.get("max_attempts", "unknown")
     action_passed, action_total = capsule_action_gate_coverage(results, config)
     successful_pairs, _ = primary_success_coverage(document, results, config)
     authoring_tokens = lifecycle_authoring_total(document, "combined_tokens") or 0
@@ -3535,11 +4117,11 @@ def capsule_lifecycle_report(document: dict[str, Any]) -> str:
         f"- Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`",
         f"- Cases: {len(document['cases'])}",
         f"- Implementation repetitions: {repetitions}",
-        "- Authoring attempts: exactly one per fixture",
+        f"- Authoring attempts: up to {max_authoring_attempts} per fixture; all calls charged",
         f"- Claim protocol: `{document.get('claim_protocol', 'missing')}`",
         f"- Preregistration SHA-256: `{document.get('protocol_sha256', 'missing')}`",
         "- Markdown baseline: source task used directly, with zero preparation model calls",
-        "- Capsule workflow: source task -> skill authoring call -> deterministic sealed context -> implementation",
+        "- Capsule workflow: source task -> bounded skill authoring -> deterministic sealed context -> implementation",
         "",
     ]
     if limitations:
@@ -3550,7 +4132,8 @@ def capsule_lifecycle_report(document: dict[str, Any]) -> str:
     lines.extend([
         "## Quality",
         "",
-        f"Authored and compiled Capsule handoffs: **{authored}/{len(authoring['results'])}**.  ",
+        f"Authored and compiled Capsule handoffs: **{authored}/{len(authoring['results'])}** "
+        f"using **{authoring_calls}** model call(s).  ",
         f"Capsule routed action gate: **{action_passed}/{action_total}**.",
         "",
         "| Workflow | Successful implementations | Tests | Acceptance |",
@@ -3572,7 +4155,7 @@ def capsule_lifecycle_report(document: dict[str, Any]) -> str:
         "",
         "| Stage | Ordinary Markdown | Capsule v6 | Capsule delta |",
         "|---|---:|---:|---:|",
-        f"| Authoring ({len(document['cases'])} artifacts) | 0 | {int(authoring_tokens)} | n/a |",
+        f"| Authoring ({len(document['cases'])} artifacts / {authoring_calls} calls) | 0 | {int(authoring_tokens)} | n/a |",
         f"| Implementation ({expected_pairs} runs/arm) | {int(baseline_impl_tokens)} | {int(capsule_impl_tokens)} | {percent_delta(baseline_impl_tokens, capsule_impl_tokens)} |",
         f"| Measured workload: each artifact reused {repetitions} {reuse_word} | {int(baseline_impl_tokens)} | {int(measured_capsule_tokens)} | {percent_delta(baseline_impl_tokens, measured_capsule_tokens)} |",
         "",
@@ -3645,7 +4228,7 @@ def capsule_lifecycle_report(document: dict[str, Any]) -> str:
         "## Limits",
         "",
         "- Three synthetic multi-file Python fixtures can validate this workflow, not establish a universal model-independent claim.",
-        f"- There is one authoring observation per fixture; implementation is repeated {repetitions} {reuse_word} per arm.",
+        f"- There is one bounded authoring process per fixture (up to {max_authoring_attempts} attempts); implementation is repeated {repetitions} {reuse_word} per arm.",
         "- Provider token and agent-duration telemetry are self-reported. Deterministic Capsule compilation uses no model tokens and is excluded from agent wall time.",
         "- Capsule static bytes can exceed Markdown because it embeds routed source. This benchmark tests total task execution, not file compression.",
         "- Hidden tests remain outside authoring and implementation workspaces. Visible checks are restored from immutable fixtures.",
@@ -3659,7 +4242,7 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
     config = document_comparison(document)
     if not is_capsule_comparison(config):
         raise ValueError(f"result is not a Capsule v6 comparison: {config.name}")
-    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V2:
         return capsule_lifecycle_report(document)
     baseline_label = arm_label(config, config.primary_baseline)
     candidate_label = arm_label(config, config.primary_candidate)
@@ -3910,7 +4493,7 @@ def validate_capsule_release(
     except ValueError:
         config = None
     if (
-        config != MARKDOWN_CAPSULE_LIFECYCLE_V1
+        config != MARKDOWN_CAPSULE_LIFECYCLE_V2
         or not isinstance(results, list)
         or not capsule_report_is_credible(document, results)
     ):

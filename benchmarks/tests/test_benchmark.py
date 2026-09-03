@@ -575,6 +575,142 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertIsNone(attempt["semantic"])
             self.assertNotIn("private-provider-oracle", document_text)
 
+    def test_lifecycle_retry_is_validation_bound_private_and_fully_charged(self) -> None:
+        lifecycle = load_module("benchmark_lifecycle_retry_privacy", LIFECYCLE)
+        cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        sentinel = "PRIVATE-FAILED-AUTHORING-OUTPUT"
+        calls: list[tuple[str, int]] = []
+
+        def fake_provider(workspace, *_args, **_kwargs):
+            case_id, raw_attempt = workspace.parent.name.rsplit("-attempt-", 1)
+            attempt = int(raw_attempt)
+            calls.append((case_id, attempt))
+            artifact = workspace / "result.spec.ctx"
+            if attempt == 1:
+                artifact.write_text(f"{sentinel}:{case_id}\n", encoding="utf-8")
+            else:
+                artifact.write_bytes(
+                    (HANDOFF_CASES / case_id / "packet.spec.ctx").read_bytes()
+                )
+            provider = lifecycle.mock_provider()
+            provider["usage"] = {
+                "input_tokens": 10,
+                "uncached_input_tokens": 9,
+                "output_tokens": 5,
+            }
+            return provider
+
+        with tempfile.TemporaryDirectory(prefix="generation-retry-") as directory:
+            output = Path(directory) / "generated"
+            with mock.patch.object(
+                lifecycle.core,
+                "run_codex",
+                side_effect=fake_provider,
+            ):
+                lifecycle.generate(Namespace(
+                    provider="codex",
+                    model="test-model",
+                    reasoning_effort="medium",
+                    token_encoding=None,
+                    max_attempts=2,
+                    cases_dir=HANDOFF_CASES,
+                    case=[],
+                    output=output,
+                    timeout_seconds=30,
+                ))
+
+            document_text = (output / "generation.json").read_text(encoding="utf-8")
+            document = json.loads(document_text)
+            self.assertEqual(len(calls), len(cases) * 2)
+            self.assertNotIn(sentinel, document_text)
+            self.assertTrue(
+                lifecycle.generation_report_is_credible(
+                    document,
+                    cases_dir=HANDOFF_CASES,
+                    skill_dir=ROOT / "skills" / "semantic-spec-writer",
+                )
+            )
+            self.assertEqual(
+                lifecycle.total_generation_metric(document, "input_tokens"),
+                60.0,
+            )
+            self.assertEqual(
+                lifecycle.total_generation_metric(document, "output_tokens"),
+                30.0,
+            )
+            for result in document["results"]:
+                self.assertEqual(result["selected_attempt"], 2)
+                self.assertEqual(result["provider"]["attempt_count"], 2)
+                self.assertEqual(result["provider"]["usage"]["input_tokens"], 20)
+                failed, selected = result["attempts"]
+                self.assertIsNone(failed["artifact"])
+                self.assertIsNone(failed["specification"])
+                self.assertEqual(
+                    failed["validation"]["status"],
+                    "retryable_failure",
+                )
+                self.assertTrue(failed["validation"]["codes"])
+                self.assertEqual(
+                    selected["validation"],
+                    {"status": "passed", "codes": []},
+                )
+
+    def test_lifecycle_provider_failure_is_terminal_and_never_retried(self) -> None:
+        lifecycle = load_module("benchmark_lifecycle_terminal_provider", LIFECYCLE)
+        sentinel = "PRIVATE-PROVIDER-FAILURE-OUTPUT"
+        calls = 0
+
+        def failed_provider(workspace, *_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            (workspace / "result.spec.ctx").write_text(sentinel, encoding="utf-8")
+            provider = lifecycle.mock_provider()
+            provider["return_code"] = 1
+            provider["usage"] = {
+                "input_tokens": 11,
+                "uncached_input_tokens": 10,
+                "output_tokens": 3,
+            }
+            return provider
+
+        with tempfile.TemporaryDirectory(prefix="generation-provider-failure-") as directory:
+            output = Path(directory) / "generated"
+            with mock.patch.object(
+                lifecycle.core,
+                "run_codex",
+                side_effect=failed_provider,
+            ):
+                lifecycle.generate(Namespace(
+                    provider="codex",
+                    model="test-model",
+                    reasoning_effort="medium",
+                    token_encoding=None,
+                    max_attempts=2,
+                    cases_dir=HANDOFF_CASES,
+                    case=["refund-ledger"],
+                    output=output,
+                    timeout_seconds=30,
+                ))
+
+            document_text = (output / "generation.json").read_text(encoding="utf-8")
+            result = json.loads(document_text)["results"][0]
+            self.assertEqual(calls, 1)
+            self.assertNotIn(sentinel, document_text)
+            self.assertIsNone(result["selected_attempt"])
+            self.assertEqual(len(result["attempts"]), 1)
+            self.assertEqual(
+                result["attempts"][0]["validation"],
+                {"status": "terminal_failure", "codes": ["provider"]},
+            )
+            self.assertEqual(
+                result["provider"]["usage"],
+                {
+                    "input_tokens": 11,
+                    "output_tokens": 3,
+                    "uncached_input_tokens": 10,
+                },
+            )
+
     def test_mock_context_run_and_report(self) -> None:
         with tempfile.TemporaryDirectory(prefix="semantic-spec-context-") as directory:
             root = Path(directory)
@@ -2758,7 +2894,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 reasoning_effort=protocol["reasoning_effort"],
                 timeout_seconds=protocol["timeout_seconds"],
                 token_encoding=None,
-                max_attempts=1,
+                max_attempts=protocol["authoring_max_attempts_per_fixture"],
                 cases_dir=HANDOFF_CASES,
             ),
             cases,
@@ -2811,6 +2947,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 },
                 "provenance": provenance,
                 "provider": attempt_provider,
+                "validation": {"status": "passed", "codes": []},
                 "error": None,
             }
             generation["results"].append({
@@ -2836,7 +2973,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 "error": None,
             })
 
-        config = handoff.MARKDOWN_CAPSULE_LIFECYCLE_V1
+        config = handoff.MARKDOWN_CAPSULE_LIFECYCLE_V2
         snapshots = {}
         for case in cases:
             packet_bytes = (case.path / "packet.spec.ctx").read_bytes()
@@ -2859,12 +2996,12 @@ class BenchmarkCliTest(unittest.TestCase):
                 config,
             )
         document.update({
-            "schema_version": 6,
+            "schema_version": 8,
             "kind": config.kind,
             "created_at": "2026-09-03T00:00:00+00:00",
             "oracle_exposure": "unit-test-private-grader",
             "comparison": config.name,
-            "lifecycle_version": 1,
+            "lifecycle_version": 2,
             "claim_protocol": handoff.LIFECYCLE_CLAIM_PROTOCOL,
             "model": protocol["model"],
             "reasoning_effort": protocol["reasoning_effort"],
@@ -2923,7 +3060,7 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(primary["candidate_total"], 990.0)
         report = handoff.report(document)
         self.assertNotIn("Non-publishable", report)
-        self.assertIn("Authoring (3 artifacts) | 0 | 30", report)
+        self.assertIn("Authoring (3 artifacts / 3 calls) | 0 | 30", report)
         self.assertIn("Strict equal-success coverage: **8/9**", report)
         self.assertEqual(
             handoff.validate_capsule_release(document, report.encode("utf-8")),
@@ -2935,6 +3072,118 @@ class BenchmarkCliTest(unittest.TestCase):
                 document,
                 report.encode("utf-8") + b"tampered\n",
             ),
+        )
+
+    def test_capsule_lifecycle_repair_is_credible_and_fully_charged(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_repair", HANDOFF)
+        _, document, results = self._capsule_lifecycle_document(handoff)
+        lifecycle = handoff.lifecycle_benchmark
+        result = document["authoring"]["results"][0]
+        selected = json.loads(json.dumps(result["attempts"][0]))
+        failed = json.loads(json.dumps(selected))
+        failed_specification = "invalid first attempt\n"
+        failed["artifact"] = None
+        failed["specification"] = None
+        failed["semantic"] = benchmark_module.text_metrics(failed_specification)
+        failed["conversion_check"] = lifecycle.expected_conversion_check(
+            result["source"],
+            failed["semantic"],
+            None,
+        )
+        failed["validation"] = {
+            "status": "retryable_failure",
+            "codes": ["semantic"],
+        }
+        failed["provenance"]["spec_sha256"] = benchmark_module.sha256_bytes(
+            failed_specification.encode("utf-8")
+        )
+        failed["provenance"]["prompt_sha256"] = benchmark_module.sha256_bytes(
+            lifecycle.generation_prompt(
+                benchmark_module.discover_cases(
+                    [result["case"]],
+                    HANDOFF_CASES,
+                )[0],
+                None,
+            ).encode("utf-8")
+        )
+        failed["provider"]["usage"] = {
+            "input_tokens": 1,
+            "uncached_input_tokens": 1,
+            "output_tokens": 1,
+        }
+        failed["error"] = benchmark_module.redact_error(
+            "deterministic validation failed"
+        )
+
+        selected["attempt"] = 2
+        selected["artifact"] = f"attempts/{result['case']}-a2.spec.ctx"
+        selected["provenance"]["prompt_sha256"] = benchmark_module.sha256_bytes(
+            lifecycle.generation_prompt(
+                benchmark_module.discover_cases(
+                    [result["case"]],
+                    HANDOFF_CASES,
+                )[0],
+                None,
+                "retry",
+            ).encode("utf-8")
+        )
+        result["selected_attempt"] = 2
+        result["attempts"] = [failed, selected]
+        result["provenance"] = json.loads(json.dumps(selected["provenance"]))
+        result["provider"] = benchmark_module.redact_provider_telemetry(
+            lifecycle.aggregate_attempt_providers(result["attempts"], 2)
+        )
+
+        self.assertTrue(handoff.capsule_report_is_credible(document, results))
+        self.assertEqual(
+            handoff.lifecycle_authoring_total(document, "combined_tokens"),
+            32.0,
+        )
+        report = handoff.report(document)
+        self.assertNotIn("Non-publishable", report)
+        self.assertIn("Authoring (3 artifacts / 4 calls) | 0 | 32", report)
+        self.assertEqual(
+            handoff.validate_capsule_release(document, report.encode("utf-8")),
+            [],
+        )
+
+        uncharged = json.loads(json.dumps(document))
+        repaired = uncharged["authoring"]["results"][0]
+        repaired["provider"] = benchmark_module.redact_provider_telemetry(
+            lifecycle.aggregate_attempt_providers([repaired["attempts"][1]], 1)
+        )
+        self.assertFalse(
+            handoff.capsule_report_is_credible(uncharged, uncharged["results"])
+        )
+
+        leaked_failed_output = json.loads(json.dumps(document))
+        leaked = leaked_failed_output["authoring"]["results"][0]["attempts"][0]
+        leaked["specification"] = benchmark_module.attest_text(
+            failed_specification
+        )
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                leaked_failed_output,
+                leaked_failed_output["results"],
+            )
+        )
+
+        provider_failure = json.loads(json.dumps(document))
+        repaired = provider_failure["authoring"]["results"][0]
+        repaired["attempts"][0]["provider"]["return_code"] = 1
+        repaired["provider"] = benchmark_module.redact_provider_telemetry(
+            lifecycle.aggregate_attempt_providers(repaired["attempts"], 2)
+        )
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                provider_failure,
+                provider_failure["results"],
+            )
+        )
+        self.assertIn("Non-publishable", handoff.report(provider_failure))
+        self.assertIn(
+            "authoring provider errors occurred in 1 attempt(s)",
+            handoff.report(provider_failure),
         )
 
     def test_capsule_lifecycle_gate_rejects_cost_regression_and_tampering(self) -> None:
@@ -3029,6 +3278,211 @@ class BenchmarkCliTest(unittest.TestCase):
                 self.assertFalse(
                     handoff.lifecycle_protocol_is_supported(forged)
                 )
+
+    def test_capsule_lifecycle_authoring_failure_is_persisted(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_failure", HANDOFF)
+        cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        sentinel = "PRIVATE-MALFORMED-AUTHORING-OUTPUT"
+        authoring = {
+            "max_attempts": 2,
+            "provider_output": sentinel,
+            "results": [{
+                "case": case.id,
+                "selected_attempt": 1,
+                "attempts": [sentinel],
+                "specification": benchmark_module.attest_text(sentinel),
+                "error": None,
+            } for case in cases],
+        }
+        authoring["results"][1]["attempts"] = [{
+            "attempt": 1,
+            "validation": {"status": [], "codes": ["semantic"]},
+            "private_output": sentinel,
+        }]
+
+        def fake_generate(args, code_revision=None):
+            args.output.mkdir()
+            (args.output / "generation.json").write_text(
+                json.dumps(authoring),
+                encoding="utf-8",
+            )
+            return args.output
+
+        args = Namespace(
+            provider="codex",
+            model="test-model",
+            reasoning_effort="medium",
+            timeout_seconds=30,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            failure_output = Path(directory) / "authoring-failure.json"
+            with (
+                mock.patch.object(
+                    handoff.lifecycle_benchmark,
+                    "generate",
+                    side_effect=fake_generate,
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "redacted evidence written",
+                ):
+                    handoff.generate_lifecycle_authoring(
+                        args,
+                        cases,
+                        {"commit": "unit-test-revision"},
+                        failure_output,
+                    )
+
+            evidence = json.loads(failure_output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                evidence["kind"],
+                "capsule-lifecycle-authoring-failure",
+            )
+            self.assertEqual(evidence["phase"], "validation")
+            self.assertEqual(
+                evidence["failure"],
+                benchmark_module.redact_error(
+                    "RuntimeError: refund-ledger: authoring attempt evidence is incomplete"
+                ),
+            )
+            self.assertEqual(evidence["failed_cases"], [case.id for case in cases])
+            self.assertEqual(
+                evidence["authoring"],
+                handoff.sanitize_lifecycle_authoring_failure(authoring),
+            )
+            self.assertNotIn(sentinel, failure_output.read_text(encoding="utf-8"))
+
+    def test_capsule_lifecycle_generation_crash_preserves_partial_evidence(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_crash", HANDOFF)
+        cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
+        authoring = {"results": []}
+
+        def fake_generate(args, code_revision=None):
+            args.output.mkdir()
+            (args.output / "generation.json").write_text(
+                json.dumps(authoring),
+                encoding="utf-8",
+            )
+            raise RuntimeError("generation crashed")
+
+        args = Namespace(
+            provider="codex",
+            model="test-model",
+            reasoning_effort="medium",
+            timeout_seconds=30,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            failure_output = Path(directory) / "authoring-failure.json"
+            with mock.patch.object(
+                handoff.lifecycle_benchmark,
+                "generate",
+                side_effect=fake_generate,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "redacted evidence written",
+                ):
+                    handoff.generate_lifecycle_authoring(
+                        args,
+                        cases,
+                        {"commit": "unit-test-revision"},
+                        failure_output,
+                    )
+
+            evidence = json.loads(failure_output.read_text(encoding="utf-8"))
+            self.assertEqual(evidence["phase"], "generation")
+            self.assertEqual(
+                evidence["authoring"],
+                handoff.sanitize_lifecycle_authoring_failure(authoring),
+            )
+            self.assertEqual(evidence["failed_cases"], [case.id for case in cases])
+
+    def test_capsule_lifecycle_construction_failure_preserves_redacted_evidence(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_construction", HANDOFF)
+        cases, document, _ = self._capsule_lifecycle_document(handoff)
+        authoring = document["authoring"]
+        sentinel = "PRIVATE-CONSTRUCTION-AUTHORING-OUTPUT"
+        authoring["provider_output"] = sentinel
+        authoring["results"][0]["specification"] = (
+            benchmark_module.attest_text(sentinel)
+        )
+        packets = {
+            case.id: (HANDOFF_CASES / case.id / "packet.spec.ctx").read_bytes()
+            for case in cases
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capsule-r3.json"
+            args = Namespace(
+                comparison="markdown-capsule-lifecycle-v2",
+                provider="mock",
+                model="test-model",
+                reasoning_effort="medium",
+                timeout_seconds=30,
+                repetitions=3,
+                seed=20260901,
+                case=[],
+                variant=[],
+                output=output,
+                force=False,
+            )
+            with (
+                mock.patch.object(
+                    handoff,
+                    "generate_lifecycle_authoring",
+                    return_value=(authoring, packets),
+                ),
+                mock.patch.object(
+                    handoff,
+                    "create_document",
+                    side_effect=RuntimeError("capsule construction failed"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "redacted evidence written",
+                ):
+                    handoff.run(args)
+
+            failure_output = output.with_name(
+                f"{output.stem}.authoring-failure.json"
+            )
+            evidence_text = failure_output.read_text(encoding="utf-8")
+            evidence = json.loads(evidence_text)
+            self.assertEqual(evidence["phase"], "construction")
+            self.assertEqual(evidence["failed_cases"], [])
+            self.assertNotIn(sentinel, evidence_text)
+            self.assertEqual(
+                evidence["authoring"],
+                handoff.sanitize_lifecycle_authoring_failure(authoring),
+            )
+
+    def test_capsule_lifecycle_rejects_reused_output_before_authoring(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_output_preflight", HANDOFF)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capsule-r3.json"
+            output.write_text("existing\n", encoding="utf-8")
+            args = Namespace(
+                comparison="markdown-capsule-lifecycle-v2",
+                provider="mock",
+                model="test-model",
+                reasoning_effort="medium",
+                timeout_seconds=30,
+                repetitions=3,
+                seed=20260901,
+                case=[],
+                variant=[],
+                output=output,
+                force=False,
+            )
+            with mock.patch.object(
+                handoff,
+                "generate_lifecycle_authoring",
+            ) as generate:
+                with self.assertRaisesRegex(RuntimeError, "already exists"):
+                    handoff.run(args)
+            generate.assert_not_called()
 
     def test_execution_only_capsule_result_is_not_lifecycle_release_evidence(self) -> None:
         handoff = load_module("benchmark_capsule_execution_only_release", HANDOFF)
@@ -3581,33 +4035,57 @@ class BenchmarkCliTest(unittest.TestCase):
                 "fixture_sha256": snapshot["fixture_sha256"],
                 "skill_sha256": generation["skill_sha256"],
             }
-            provider = {
-                "return_code": 0,
-                "event_errors": [],
-                "usage": {
-                    "input_tokens": 100,
-                    "uncached_input_tokens": 100,
-                    "output_tokens": 10,
-                },
+            provider = lifecycle.mock_provider()
+            provider["usage"] = {
+                "input_tokens": 100,
+                "uncached_input_tokens": 100,
+                "output_tokens": 10,
             }
+            provider = benchmark_module.redact_provider_telemetry(provider)
             semantic_metrics = benchmark_module.text_metrics(semantic)
+            source_metrics = benchmark_module.text_metrics(source)
+            conversion_check = lifecycle.expected_conversion_check(
+                source_metrics,
+                semantic_metrics,
+                None,
+            )
             results.append({
                 "case": case.id,
                 "artifact": f"specs/{case.id}.spec.ctx",
                 "selected_attempt": 1,
                 "attempts": [{
                     "attempt": 1,
+                    "artifact": f"attempts/{case.id}-a1.spec.ctx",
                     "specification": benchmark_module.attest_text(semantic),
                     "semantic": semantic_metrics,
+                    "conversion_check": conversion_check,
+                    "validation": {"status": "passed", "codes": []},
                     "provenance": provenance,
                     "provider": provider,
                     "error": None,
                 }],
-                "source": benchmark_module.text_metrics(source),
+                "source": source_metrics,
                 "specification": benchmark_module.attest_text(semantic),
                 "semantic": semantic_metrics,
+                "compression": {
+                    "bytes_percent": benchmark_module.compression_percent(
+                        source_metrics["bytes"],
+                        semantic_metrics["bytes"],
+                    ),
+                    "words_percent": benchmark_module.compression_percent(
+                        source_metrics["words"],
+                        semantic_metrics["words"],
+                    ),
+                },
                 "provenance": provenance,
-                "provider": provider,
+                "provider": benchmark_module.redact_provider_telemetry(
+                    lifecycle.aggregate_attempt_providers(
+                        [{
+                            "provider": provider,
+                        }],
+                        1,
+                    )
+                ),
                 "error": None,
             })
         generation["results"] = results
@@ -3619,7 +4097,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 "source": {"bytes": 999999, "words": 999999, "tokens": 999999},
                 "output": {"bytes": 1, "words": 1, "tokens": 1},
             }
-        self.assertTrue(
+        self.assertFalse(
             lifecycle.generation_report_is_credible(forged_conversion)
         )
 
@@ -3690,15 +4168,21 @@ class BenchmarkCliTest(unittest.TestCase):
             )
         )
         lifecycle_report = lifecycle.render_report(
+            generation,
+            implementation,
+        )
+        self.assertNotIn("directional smoke run", lifecycle_report)
+
+        forged_report = lifecycle.render_report(
             forged_conversion,
             implementation,
         )
-        self.assertNotIn("999999", lifecycle_report)
+        self.assertNotIn("999999", forged_report)
         self.assertIn(
             "Generated document token reduction: `not claimed`",
-            lifecycle_report,
+            forged_report,
         )
-        self.assertNotIn("directional smoke run", lifecycle_report)
+        self.assertIn("directional smoke run", forged_report)
 
         forged_specification = json.loads(json.dumps(generation))
         forged_specification["results"][0]["specification"] = (

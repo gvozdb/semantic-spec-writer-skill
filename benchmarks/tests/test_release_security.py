@@ -27,6 +27,7 @@ CORE_REQUIRED = (
 LAUNCHER_REQUIRED = (
     "benchmarks/benchmark.py",
     "benchmarks/capsule-lifecycle-v1.prereg.json",
+    "benchmarks/capsule-lifecycle-v2.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
     "benchmarks/lifecycle.py",

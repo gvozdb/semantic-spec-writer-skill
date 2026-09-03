@@ -51,6 +51,7 @@ HEX_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 REQUIRED_CODE_PATHS = (
     "benchmarks/benchmark.py",
     "benchmarks/capsule-lifecycle-v1.prereg.json",
+    "benchmarks/capsule-lifecycle-v2.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
     "benchmarks/lifecycle.py",
@@ -988,10 +989,10 @@ def main() -> int:
         lifecycle.SKILL_DIR = private_skill
         lifecycle.SKILL = private_skill / "SKILL.md"
         handoff.SKILL_DIR = private_skill
-        private_protocol = private_root / "capsule-lifecycle-v1.prereg.json"
+        private_protocol = private_root / "capsule-lifecycle-v2.prereg.json"
         _write_private_file(
             private_protocol,
-            code_blobs["benchmarks/capsule-lifecycle-v1.prereg.json"],
+            code_blobs["benchmarks/capsule-lifecycle-v2.prereg.json"],
         )
         handoff.LIFECYCLE_PROTOCOL_PATH = private_protocol
         handoff.CASES_DIR = _materialize_fixture_blobs(
