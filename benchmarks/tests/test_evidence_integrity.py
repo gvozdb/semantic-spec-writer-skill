@@ -344,7 +344,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
         )
         revision_check.start()
         self.addCleanup(revision_check.stop)
-        config = handoff.CAPSULE_V5
+        config = handoff.CAPSULE_V6
         cases = core.discover_cases(cases_dir=HANDOFF_CASES)
         args = Namespace(
             provider="codex",
@@ -376,6 +376,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
         ):
             specification = artifacts[(case.id, variant)]
             snapshot = document["fixture_snapshot"][case.id]
+            target_paths = handoff.routed_edit_paths(
+                artifacts[(case.id, "packet")]
+            )
+            target_digest = core.telemetry_path_set_sha256(target_paths)
             is_capsule = variant == config.primary_candidate
             command = (
                 "/bin/bash -lc "
@@ -423,10 +427,12 @@ class EvidenceIntegrityTest(unittest.TestCase):
                     "declared_verification_executions": 1,
                     "pre_edit_declared_verification_executions": 0,
                     "pre_edit_telemetry": {
-                        "schema_version": 3,
+                        "schema_version": 4,
                         "status": "routed_edit_observed",
-                        "target_count": 1,
-                        "observed_target_count": 1,
+                        "target_count": len(target_paths),
+                        "observed_target_count": len(target_paths),
+                        "target_paths_sha256": target_digest,
+                        "observed_paths_sha256": target_digest,
                         "file_change_events": 1,
                         "unclassified_file_change_events": 0,
                         "substantive_file_change_events": 1,
@@ -513,6 +519,25 @@ class EvidenceIntegrityTest(unittest.TestCase):
             handoff.capsule_report_is_credible(
                 pathless_attestation,
                 pathless_attestation["results"],
+            )
+        )
+
+        forged_route_set = copy.deepcopy(document)
+        forged_telemetry = forged_route_set["results"][0]["provider"][
+            "pre_edit_telemetry"
+        ]
+        forged_digest = core.telemetry_path_set_sha256(("forged.py",))
+        forged_telemetry.update({
+            "target_count": 1,
+            "observed_target_count": 1,
+            "target_paths_sha256": forged_digest,
+            "observed_paths_sha256": forged_digest,
+        })
+        self.assertTrue(handoff.current_routed_edit_telemetry(forged_telemetry))
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                forged_route_set,
+                forged_route_set["results"],
             )
         )
 
@@ -867,10 +892,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 handoff.paired_job_schedule(
                     handoff_cases,
                     3,
-                    list(handoff.CAPSULE_V5.variants),
+                    list(handoff.CAPSULE_V6.variants),
                     20260901,
                 ),
-                handoff.CAPSULE_V5.variants,
+                handoff.CAPSULE_V6.variants,
             ),
             (
                 handoff.paired_job_schedule(
@@ -1061,7 +1086,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 repetitions=1,
                 seed=20260901,
                 case=["tenant-settings"],
-                comparison="capsule-v5",
+                comparison="capsule-v6",
                 variant=[],
                 timeout_seconds=30,
                 output=output,
@@ -1174,8 +1199,8 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 document = handoff.create_document(
                     args,
                     [case],
-                    list(handoff.CAPSULE_V5.variants),
-                    handoff.CAPSULE_V5,
+                    list(handoff.CAPSULE_V6.variants),
+                    handoff.CAPSULE_V6,
                 )
 
             artifacts = handoff.capsule_snapshot_artifacts(
@@ -1271,7 +1296,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 ["tenant-settings"],
                 cases_dir=cases_dir,
             )[0]
-            snapshot = handoff.case_snapshot(case, handoff.CAPSULE_V5)
+            snapshot = handoff.case_snapshot(case, handoff.CAPSULE_V6)
             artifacts = handoff.capsule_snapshot_artifacts(snapshot)
             module = handoff.context_capsule_module()
             frame_hashes = handoff._capsule_source_hashes(

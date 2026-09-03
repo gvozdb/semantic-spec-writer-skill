@@ -73,8 +73,10 @@ PROVIDER_TOOL_CALL_FIELDS = frozenset({
     "command_execution",
     "file_change",
     "mcp_tool_call",
+    "unknown_item",
     "web_search",
 })
+NON_TOOL_COMPLETED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
 PUBLIC_ERROR_CODES = frozenset({
     "capsule_declared_verification_count",
     "capsule_incomplete_routed_edits",
@@ -463,6 +465,10 @@ def _redact_pre_edit_telemetry(value: Any) -> dict[str, Any]:
     ):
         item = value.get(field)
         if isinstance(item, int) and not isinstance(item, bool) and item >= 0:
+            redacted[field] = item
+    for field in ("target_paths_sha256", "observed_paths_sha256"):
+        item = value.get(field)
+        if isinstance(item, str) and re.fullmatch(r"[0-9a-f]{64}", item):
             redacted[field] = item
     return redacted
 
@@ -3412,6 +3418,17 @@ def _telemetry_relative_path(
     return candidate.as_posix()
 
 
+def telemetry_path_set_sha256(paths: Iterable[str]) -> str:
+    """Hash a canonical path set without persisting provider event paths."""
+
+    payload = json.dumps(
+        sorted(set(paths)),
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return sha256_bytes(payload)
+
+
 def _file_change_paths(
     item: dict[str, Any],
     workspace: Path | None,
@@ -3497,6 +3514,7 @@ def parse_codex_events(
     }
     pre_edit_active = True
     observed_target_paths: set[str] = set()
+    observed_file_change_paths: set[str] = set()
     file_change_events = 0
     unclassified_file_change_events = 0
     substantive_file_change_events = 0
@@ -3521,9 +3539,13 @@ def parse_codex_events(
             event_errors.append(str(event.get("error") or event.get("message") or event))
         elif event_type == "item.completed":
             item = event.get("item", {})
+            if not isinstance(item, dict):
+                tool_calls["unknown_item"] = tool_calls.get("unknown_item", 0) + 1
+                continue
             item_type = str(item.get("type", "unknown"))
-            if item_type == "agent_message":
-                final_message = str(item.get("text", ""))
+            if item_type in NON_TOOL_COMPLETED_ITEM_TYPES:
+                if item_type == "agent_message":
+                    final_message = str(item.get("text", ""))
             elif item_type in {
                 "command_execution",
                 "file_change",
@@ -3534,17 +3556,20 @@ def parse_codex_events(
                 if item_type == "file_change":
                     file_change_events += 1
                     paths, classifiable = _file_change_paths(item, workspace)
-                    if pre_edit_active:
-                        if not target_paths or not classifiable:
-                            # A generic file-change event cannot prove that the
-                            # first substantive edit happened.  Keep charging
-                            # subsequent commands to pre-edit and fail claims
-                            # closed below rather than resetting on a README edit.
-                            unclassified_file_change_events += 1
-                        elif paths & target_paths:
-                            substantive_file_change_events += 1
-                            observed_target_paths.update(paths & target_paths)
-                            pre_edit_active = observed_target_paths != target_paths
+                    if classifiable:
+                        observed_file_change_paths.update(paths)
+                    else:
+                        unclassified_file_change_events += 1
+                    if classifiable and paths & target_paths:
+                        substantive_file_change_events += 1
+                    if (
+                        pre_edit_active
+                        and target_paths
+                        and classifiable
+                        and paths & target_paths
+                    ):
+                        observed_target_paths.update(paths & target_paths)
+                        pre_edit_active = observed_target_paths != target_paths
                 elif item_type == "command_execution":
                     command = str(item.get("command", ""))
                     is_declared_verification = bool(
@@ -3576,6 +3601,10 @@ def parse_codex_events(
                         command_categories[name] += matched
                         if pre_edit:
                             pre_edit_command_categories[name] += matched
+            else:
+                # Future completed item kinds are claim-ineligible until their
+                # tool/non-tool semantics are reviewed explicitly.
+                tool_calls["unknown_item"] = tool_calls.get("unknown_item", 0) + 1
 
     if usage:
         usage = {key: int(value) for key, value in usage.items() if isinstance(value, int)}
@@ -3603,10 +3632,14 @@ def parse_codex_events(
             pre_edit_declared_verification_executions
         ),
         "pre_edit_telemetry": {
-            "schema_version": 3,
+            "schema_version": 4,
             "status": telemetry_status,
             "target_count": len(target_paths),
             "observed_target_count": len(observed_target_paths),
+            "target_paths_sha256": telemetry_path_set_sha256(target_paths),
+            "observed_paths_sha256": telemetry_path_set_sha256(
+                observed_file_change_paths
+            ),
             "file_change_events": file_change_events,
             "unclassified_file_change_events": unclassified_file_change_events,
             "substantive_file_change_events": substantive_file_change_events,

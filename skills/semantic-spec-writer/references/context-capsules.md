@@ -1,12 +1,12 @@
 # Context Capsules
 
-Use Capsule v5 when a validated Packet v3 will be handed to another agent or
+Use Capsule v6 when a validated Packet v3 will be handed to another agent or
 executed repeatedly. A capsule embeds the packet and the exact routed source
 snapshot in one sealed, length-framed UTF-8 artifact.
 
 ## Why
 
-Packet v3 tells an agent where to look. Capsule v5 supplies those bytes before
+Packet v3 tells an agent where to look. Capsule v6 supplies those bytes before
 the first tool call. A sealed execution control marks the packet as the task and
 every source frame as current pre-edit data, never desired output. Its fast path
 permits exactly two tool calls: one bundled file-change operation containing every
@@ -14,18 +14,17 @@ routed edit, then the exact declared `V1` alone once. An exact-frame mismatch or
 failed `V1` exits the fast path into normal recovery; that attempt is not
 claim-eligible.
 
-A canonical execution lock is sealed after the final source frame. It repeats
-the exact mutation paths and `V1` command as a two-step state machine, then ends
-with `V1 exit 0 -> final answer now; zero tools remaining`. Placing the stop
-condition at the tail keeps it adjacent to the agent's next action instead of
-relying only on an instruction before a large source payload.
+A canonical next-action record is sealed after the final source frame. It
+repeats the exact mutation paths and names only the required first
+`file_change`. It deliberately omits `V1` and terminal commands so recency
+cannot prime a command before the edit. The leading sealed control owns the
+complete `file_change -> V1 -> final answer` transition.
 
 When a host wraps the Capsule in its own prompt, use execution profile
-`capsule-v5-terminal-1`: omit generic syntax or test instructions, place the
-Capsule unchanged, then repeat its terminal transition as the final
-non-whitespace instruction. The exact Packet `V1` is the only fast-path check.
-This profile is separate from the sealed wire artifact; hosts must not weaken
-the Capsule's two-call gate.
+`capsule-v6-next-action-1`: omit generic syntax or test instructions and place
+the Capsule unchanged with no competing instruction after it. The exact Packet
+`V1` is the only fast-path check. This profile is separate from the sealed wire
+artifact; hosts must not weaken the Capsule's two-call gate.
 
 Each current-source frame repeats its route's mandatory `do` list in canonical
 metadata. This creates a local work unit: requirements and exact source bytes are
@@ -34,7 +33,7 @@ adjacent, while the embedded Packet remains the authoritative full task.
 Use Packet v3 directly for a small one-off task. Capsule construction adds
 context bytes and pays off only when avoiding downstream tool/model turns is
 worth more than that initial overhead. Build a capsule only for pending work;
-Capsule v5 deliberately treats a no-edit or prose-only completion as failure.
+Capsule v6 deliberately treats a no-edit or prose-only completion as failure.
 
 ## Build and check
 
@@ -62,13 +61,15 @@ python3 skills/semantic-spec-writer/scripts/context_capsule.py check \
   --packet /path/to/task.spec.ctx
 ```
 
-The builder emits Capsule v5. The checker can still read Capsule v4 for
+The builder emits Capsule v6. The checker can still read public Capsule v4 for
 migration, but v4 lacks the sealed edit-before-verify control and should not be
-used for new execution handoffs.
+used for new execution handoffs. Capsule v5 was an unpublished experiment and
+is rejected rather than interpreted as either wire format. Both supported
+versions require their original Packet v3 basis.
 
 The checker rejects malformed framing, non-canonical metadata, source drift,
 packet substitution, changed route hashes, symlinks, trailing bytes, invalid
-UTF-8, and seal mismatches. Capsule v5 has a 128 MiB (134,217,728-byte)
+UTF-8, and seal mismatches. Capsule v6 has a 128 MiB (134,217,728-byte)
 aggregate limit: magic, header, every frame descriptor and payload, framing
 newlines, and seal all count. The execution control line counts as well. The
 Packet and each routed regular input remain
@@ -109,9 +110,9 @@ permissions are unavailable, but these checks do not serialize writers.
   tool call other than that single change and the declared `V1`.
 - A Capsule packet declares exactly one `verify` entry, named `V1`; run that
   exact command alone exactly once after every routed edit is observed.
-- The sealed terminal lock must exactly match the Packet's mutation routes and
-  `V1`. A successful `V1` leaves zero tool calls: answer immediately without a
-  status, diff, check, or other command.
+- The sealed next-action record must exactly match the Packet's mutation routes
+  and name only the first bundled file change. A successful `V1` leaves zero
+  tool calls: answer immediately without a status, diff, check, or other command.
 - One provider attempt is claim-eligible. Retries require a new benchmark run.
 - Stop on success. After an exact-frame mismatch or failed `V1`, mark the fast
   path failed before recovering normally.

@@ -885,9 +885,9 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertIsInstance(first.decode("utf-8"), str)
             checked = capsule_module.check_capsule(repo, first, packet=packet)
             self.assertTrue(checked["valid"], checked)
-            self.assertEqual(checked["version"], 5)
+            self.assertEqual(checked["version"], 6)
             self.assertEqual(checked["source_count"], 3)
-            _, _, embedded, _, terminal, _ = capsule_module._parse_capsule(first)
+            _, _, embedded, _, next_action, _ = capsule_module._parse_capsule(first)
             self.assertEqual(
                 capsule_module.packet_checker.parse_execution_policies(
                     embedded.decode("utf-8")
@@ -895,16 +895,16 @@ class BenchmarkCliTest(unittest.TestCase):
                 [capsule_module.CAPSULE_EXECUTION],
             )
             self.assertIn(
-                b'"first_action":"file_change"',
+                b'"first":"file_change"',
                 first,
             )
             self.assertIn(
-                b'"edit_strategy":"single_bundled_file_change"',
+                b'"edit":"one_bundled_file_change_all_mutation_routes"',
                 first,
             )
-            self.assertIn(b'"pre_edit_read_budget":0', first)
-            self.assertIn(b'"no_edit":"failure"', first)
-            self.assertIn(b'"pre_edit_verification":"forbidden"', first)
+            self.assertIn(b'"pre_tools":0', first)
+            self.assertIn(b'"no_edit":"fail"', first)
+            self.assertIn(b'"verify":"exact_V1_once_after_edit"', first)
             self.assertEqual(
                 first.splitlines()[1],
                 b"@EXECUTE " + capsule_module.CAPSULE_CONTROL.encode("ascii"),
@@ -914,16 +914,9 @@ class BenchmarkCliTest(unittest.TestCase):
                 first,
             )
             self.assertIn(b'"role":"current_pre_edit_source"', first)
-            self.assertEqual(
-                terminal["on_v1_pass"],
-                "FINAL_ANSWER_NOW_NO_MORE_TOOLS",
-            )
-            self.assertEqual(terminal["tool_call_budget"], 2)
-            self.assertEqual(
-                terminal["step_2"]["command"],
-                "python3 -m unittest -q test_smoke.py",
-            )
-            self.assertIn(capsule_module.TERMINAL_STOP_LINE, first)
+            self.assertEqual(next_action["kind"], "capsule_v6_next_action")
+            self.assertEqual(next_action["tool"], "file_change")
+            self.assertEqual(next_action["count"], 1)
             self.assertIn(
                 b'"do":["first layer containing name from request>tenant>global else '
                 b'default; null stops fallback; return exactly '
@@ -947,37 +940,58 @@ class BenchmarkCliTest(unittest.TestCase):
         prompt = handoff.execution_prompt(
             "opaque",
             "capsule",
-            handoff.CAPSULE_V5,
+            handoff.CAPSULE_V6,
         )
 
-        self.assertIn(capsule_module.CAPSULE_CONTROL, prompt)
+        self.assertIn(capsule_module.CAPSULE_HOST_CONTROL, prompt)
+        self.assertNotIn(capsule_module.CAPSULE_CONTROL, prompt)
         self.assertIn(
-            "a passing early V1 fails the fast path",
+            "@NEXT is TOOL 1",
             prompt,
         )
         self.assertNotIn(
             "Finish only after checking the implementation for syntax errors",
             prompt,
         )
-        self.assertTrue(
-            prompt.rstrip().endswith(capsule_module.CAPSULE_TERMINAL_PROFILE),
-        )
-        self.assertGreater(
-            prompt.rfind("CAPSULE-TERMINAL/1"),
-            prompt.rfind("--- END SPECIFICATION ---"),
-        )
+        self.assertTrue(prompt.endswith("--- END SPECIFICATION ---\n"))
+        self.assertNotIn("CAPSULE-TERMINAL", prompt)
         self.assertLess(
             prompt.index("Capsule execution gate:"),
             prompt.index("--- BEGIN SPECIFICATION ---"),
         )
+        source = HANDOFF_CASES / "tenant-settings"
+        capsule_text = capsule_module.build_capsule(
+            source / "starter",
+            source / "packet.spec.ctx",
+        ).decode("utf-8")
+        capsule_prompt = handoff.execution_prompt(
+            capsule_text,
+            "capsule",
+            handoff.CAPSULE_V6,
+        )
+        self.assertGreater(
+            capsule_prompt.rfind("@NEXT "),
+            capsule_prompt.rfind("@FRAME "),
+        )
+        self.assertLess(
+            capsule_prompt.rfind("@NEXT "),
+            capsule_prompt.rfind("@SEAL "),
+        )
+        seal_line = capsule_text.splitlines()[-1]
+        self.assertTrue(seal_line.startswith("@SEAL "))
+        self.assertTrue(
+            capsule_prompt.endswith(
+                f"{seal_line}\n--- END SPECIFICATION ---\n"
+            )
+        )
         self.assertNotIn(
             "Capsule execution gate:",
-            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V5),
+            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V6),
         )
         packet_prompt = handoff.execution_prompt(
             "opaque",
             "packet",
-            handoff.CAPSULE_V5,
+            handoff.CAPSULE_V6,
         )
         self.assertEqual(packet_prompt, benchmark_module.benchmark_prompt("opaque"))
         self.assertEqual(
@@ -1032,12 +1046,79 @@ class BenchmarkCliTest(unittest.TestCase):
                 (required, required),
             )
 
+    def test_capsule_telemetry_canonicalizes_valid_packet_path_aliases(self) -> None:
+        handoff = load_module("benchmark_handoff_capsule_alias", HANDOFF)
+        capsule_module = load_module("context_capsule_alias", CONTEXT_CAPSULE)
+        source = HANDOFF_CASES / "tenant-settings"
+        with tempfile.TemporaryDirectory(prefix="capsule-alias-") as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            packet = root / "packet.spec.ctx"
+            shutil.copytree(source / "starter", repo)
+            packet_text = (source / "packet.spec.ctx").read_text(encoding="utf-8")
+            packet_text = packet_text.replace(
+                "  edit: settings/layers.py::def select_layer",
+                "  edit: ./settings/layers.py::def select_layer",
+                1,
+            )
+            targets = capsule_module.packet_checker.parse_routes(packet_text)
+            route_hash = capsule_module.packet_checker.route_sha256(repo, targets)
+            packet_text, replacements = re.subn(
+                r"(?m)^basis: route-sha256:[0-9a-f]{64}$",
+                f"basis: route-sha256:{route_hash}",
+                packet_text,
+                count=1,
+            )
+            self.assertEqual(replacements, 1)
+            packet.write_text(packet_text, encoding="utf-8")
+
+            capsule = capsule_module.build_capsule(repo, packet)
+            self.assertTrue(
+                capsule_module.check_capsule(repo, capsule, packet=packet)["valid"]
+            )
+            expected_paths = (
+                "settings/coercion.py",
+                "settings/layers.py",
+                "settings/service.py",
+            )
+            self.assertEqual(handoff.routed_edit_paths(packet_text), expected_paths)
+            starter = benchmark_module.snapshot_fixture_tree(repo)
+            self.assertEqual(
+                handoff.routed_edit_progress(repo, packet_text, starter),
+                (3, 0),
+            )
+
+            parsed = benchmark_module.parse_codex_events(
+                json.dumps({
+                    "type": "item.completed",
+                    "item": {
+                        "type": "file_change",
+                        "changes": [{"path": path} for path in expected_paths],
+                    },
+                }),
+                substantive_edit_paths=handoff.routed_edit_paths(packet_text),
+            )
+            expected_digest = benchmark_module.telemetry_path_set_sha256(
+                expected_paths
+            )
+            self.assertEqual(
+                parsed["pre_edit_telemetry"]["target_paths_sha256"],
+                expected_digest,
+            )
+            self.assertEqual(
+                parsed["pre_edit_telemetry"]["observed_paths_sha256"],
+                expected_digest,
+            )
+
     def test_capsule_no_edit_and_pre_edit_v1_fail_the_run(self) -> None:
         handoff = load_module("benchmark_handoff_capsule_no_edit", HANDOFF)
         real_grader = handoff.core.run_grader
         real_verification = handoff.core.run_verification
 
-        def no_edit_provider(_case, _workspace):
+        def no_edit_provider(case, _workspace):
+            target_paths = handoff.routed_edit_paths(
+                handoff.artifact_text(case, "packet", handoff.CAPSULE_V6)
+            )
             return {
                 "return_code": 0,
                 "duration_seconds": 0.001,
@@ -1058,10 +1139,16 @@ class BenchmarkCliTest(unittest.TestCase):
                 "declared_verification_executions": 1,
                 "pre_edit_declared_verification_executions": 1,
                 "pre_edit_telemetry": {
-                    "schema_version": 3,
+                    "schema_version": 4,
                     "status": "no_routed_edit_observed",
-                    "target_count": 3,
+                    "target_count": len(target_paths),
                     "observed_target_count": 0,
+                    "target_paths_sha256": (
+                        benchmark_module.telemetry_path_set_sha256(target_paths)
+                    ),
+                    "observed_paths_sha256": (
+                        benchmark_module.telemetry_path_set_sha256(())
+                    ),
                     "file_change_events": 0,
                     "unclassified_file_change_events": 0,
                     "substantive_file_change_events": 0,
@@ -1109,7 +1196,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 repetitions=1,
                 seed=20260901,
                 case=["refund-ledger"],
-                comparison="capsule-v5",
+                comparison="capsule-v6",
                 variant=[],
                 timeout_seconds=30,
                 output=output,
@@ -1226,10 +1313,11 @@ class BenchmarkCliTest(unittest.TestCase):
             shutil.copy2(source / "packet.spec.ctx", packet)
             capsule = capsule_module.build_capsule(repo, packet)
             tampered = capsule.replace(
-                b"IMPLEMENTATION REQUIRED",
-                b"IMPLEMENTATION OPTIONAL",
+                b"EXECUTE packet",
+                b"ABORTXX packet",
                 1,
             )
+            self.assertNotEqual(tampered, capsule)
 
             checked = capsule_module.check_capsule(repo, tampered, packet=packet)
             self.assertFalse(checked["valid"])
@@ -1453,7 +1541,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(forced.returncode, 0, forced.stderr)
-            self.assertTrue(output.read_bytes().startswith(b"CAPSULE-V5\n"))
+            self.assertTrue(output.read_bytes().startswith(b"CAPSULE-V6\n"))
 
     def test_context_capsule_build_rejects_output_aliasing_input_file(self) -> None:
         source = HANDOFF_CASES / "tenant-settings"
@@ -1511,7 +1599,7 @@ class BenchmarkCliTest(unittest.TestCase):
             (root / "tiktoken.py").write_text(
                 "class Encoder:\n"
                 "    def encode(self, text):\n"
-                "        return [0] * (2 if text.startswith('CAPSULE-V5') else 1)\n"
+                "        return [0] * (2 if text.startswith('CAPSULE-V6') else 1)\n"
                 "def get_encoding(name):\n"
                 "    return Encoder()\n",
                 encoding="utf-8",
@@ -1613,6 +1701,127 @@ class BenchmarkCliTest(unittest.TestCase):
             parsed["pre_edit_telemetry"]["status"], "routed_edit_observed"
         )
 
+    def test_capsule_gate_rejects_unclassified_pre_edit_command(self) -> None:
+        handoff = load_module("benchmark_handoff_unclassified_pre_edit", HANDOFF)
+        declared = "python3 -m unittest -q test_smoke.py"
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "pwd",
+                    "exit_code": 0,
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "service.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": declared,
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("service.py",),
+            declared_verification_command=declared,
+        )
+
+        self.assertEqual(parsed["pre_edit_command_executions"], 1)
+        self.assertEqual(
+            parsed["pre_edit_command_categories"],
+            {"discovery": 0, "read": 0, "verify": 0},
+        )
+        self.assertFalse(handoff.capsule_has_exact_tool_sequence(parsed))
+
+    def test_capsule_gate_rejects_unknown_completed_item_kind(self) -> None:
+        handoff = load_module("benchmark_handoff_unknown_item", HANDOFF)
+        declared = "python3 -m unittest -q test_smoke.py"
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {"type": "future_tool_call"},
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [{"path": "service.py"}],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": declared,
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("service.py",),
+            declared_verification_command=declared,
+        )
+
+        self.assertEqual(parsed["tool_calls"]["unknown_item"], 1)
+        self.assertEqual(parsed["tool_call_total"], 3)
+        self.assertFalse(handoff.capsule_has_exact_tool_sequence(parsed))
+
+    def test_capsule_gate_rejects_unrouted_path_in_bundled_edit(self) -> None:
+        handoff = load_module("benchmark_handoff_unrouted_edit", HANDOFF)
+        declared = "python3 -m unittest -q test_smoke.py"
+        events = "\n".join([
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "file_change",
+                    "changes": [
+                        {"path": "service.py"},
+                        {"path": "unrouted.py"},
+                    ],
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": declared,
+                    "exit_code": 0,
+                },
+            }),
+        ])
+
+        parsed = benchmark_module.parse_codex_events(
+            events,
+            substantive_edit_paths=("service.py",),
+            declared_verification_command=declared,
+        )
+
+        telemetry = parsed["pre_edit_telemetry"]
+        self.assertEqual(
+            telemetry["target_paths_sha256"],
+            benchmark_module.telemetry_path_set_sha256(("service.py",)),
+        )
+        self.assertEqual(
+            telemetry["observed_paths_sha256"],
+            benchmark_module.telemetry_path_set_sha256(
+                ("service.py", "unrouted.py")
+            ),
+        )
+        self.assertFalse(handoff.current_routed_edit_telemetry(telemetry))
+        self.assertFalse(handoff.capsule_has_exact_tool_sequence(parsed))
+
     def test_codex_event_parser_keeps_claim_telemetry_pre_edit_until_target(self) -> None:
         """A README change cannot hide subsequent discovery before implementation."""
 
@@ -1673,10 +1882,18 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(
             parsed["pre_edit_telemetry"],
             {
-                "schema_version": 3,
+                "schema_version": 4,
                 "status": "routed_edit_observed",
                 "target_count": 1,
                 "observed_target_count": 1,
+                "target_paths_sha256": (
+                    benchmark_module.telemetry_path_set_sha256(("service.py",))
+                ),
+                "observed_paths_sha256": (
+                    benchmark_module.telemetry_path_set_sha256(
+                        ("README.md", "service.py")
+                    )
+                ),
                 "file_change_events": 2,
                 "unclassified_file_change_events": 0,
                 "substantive_file_change_events": 1,
@@ -1739,10 +1956,18 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(
             parsed["pre_edit_telemetry"],
             {
-                "schema_version": 3,
+                "schema_version": 4,
                 "status": "routed_edit_observed",
                 "target_count": 2,
                 "observed_target_count": 2,
+                "target_paths_sha256": benchmark_module.telemetry_path_set_sha256(
+                    ("first.py", "second.py")
+                ),
+                "observed_paths_sha256": (
+                    benchmark_module.telemetry_path_set_sha256(
+                        ("first.py", "second.py")
+                    )
+                ),
                 "file_change_events": 2,
                 "unclassified_file_change_events": 0,
                 "substantive_file_change_events": 2,
@@ -2350,7 +2575,7 @@ class BenchmarkCliTest(unittest.TestCase):
         revision_check.start()
         self.addCleanup(revision_check.stop)
         cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
-        config = handoff.CAPSULE_V5
+        config = handoff.CAPSULE_V6
         snapshots = {
             case.id: handoff.case_snapshot(case, config) for case in cases
         }
@@ -2358,6 +2583,10 @@ class BenchmarkCliTest(unittest.TestCase):
         run_order = 0
         for case in cases:
             snapshot = snapshots[case.id]
+            target_paths = handoff.routed_edit_paths(
+                handoff.artifact_text(case, "packet", config)
+            )
+            target_digest = benchmark_module.telemetry_path_set_sha256(target_paths)
             for repetition in range(1, 4):
                 for variant in config.variants:
                     run_order += 1
@@ -2406,10 +2635,12 @@ class BenchmarkCliTest(unittest.TestCase):
                             "declared_verification_executions": 1,
                             "pre_edit_declared_verification_executions": 0,
                             "pre_edit_telemetry": {
-                                "schema_version": 3,
+                                "schema_version": 4,
                                 "status": "routed_edit_observed",
-                                "target_count": 1,
-                                "observed_target_count": 1,
+                                "target_count": len(target_paths),
+                                "observed_target_count": len(target_paths),
+                                "target_paths_sha256": target_digest,
+                                "observed_paths_sha256": target_digest,
                                 "file_change_events": 1,
                                 "unclassified_file_change_events": 0,
                                 "substantive_file_change_events": 1,
@@ -2459,12 +2690,12 @@ class BenchmarkCliTest(unittest.TestCase):
                         "error": None,
                     })
         document = {
-            "schema_version": 3,
+            "schema_version": 4,
             "kind": "semantic-context-capsule-comparison",
-            "comparison": "capsule-v5",
-            "execution_profile": "capsule-v5-terminal-1",
+            "comparison": "capsule-v6",
+            "execution_profile": "capsule-v6-next-action-1",
             "packet_version": 3,
-            "capsule_version": 5,
+            "capsule_version": 6,
             "run_id": "capsule-test",
             "provider": "codex",
             "model": "test-model",
@@ -2547,7 +2778,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     "--provider",
                     "mock",
                     "--comparison",
-                    "capsule-v5",
+                    "capsule-v6",
                     "--output",
                     str(result_path),
                 ],
@@ -2560,13 +2791,13 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
             document = json.loads(result_path.read_text(encoding="utf-8"))
             self.assertEqual(document["kind"], "semantic-context-capsule-comparison")
-            self.assertEqual(document["comparison"], "capsule-v5")
-            self.assertEqual(document["schema_version"], 3)
+            self.assertEqual(document["comparison"], "capsule-v6")
+            self.assertEqual(document["schema_version"], 4)
             self.assertEqual(
                 document["execution_profile"],
-                "capsule-v5-terminal-1",
+                "capsule-v6-next-action-1",
             )
-            self.assertEqual(document["capsule_version"], 5)
+            self.assertEqual(document["capsule_version"], 6)
             self.assertEqual(document["variants"], ["packet", "capsule"])
             self.assertEqual(len(document["results"]), 6)
             serialized = json.dumps(document)
@@ -2601,7 +2832,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     str(HANDOFF),
                     "static",
                     "--comparison",
-                    "capsule-v5",
+                    "capsule-v6",
                     "--json",
                 ],
                 cwd=ROOT,
@@ -2629,7 +2860,7 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertTrue(handoff.report_run_is_credible(document, results))
 
         forged_profile = json.loads(json.dumps(document))
-        forged_profile["execution_profile"] = "capsule-v5-terminal-0"
+        forged_profile["execution_profile"] = "capsule-v6-next-action-0"
         self.assertFalse(
             handoff.report_run_is_credible(
                 forged_profile,
@@ -2716,7 +2947,7 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertIn("supports a measured token-saving result", report)
         self.assertIn("Provider telemetry remains self-reported", report)
         self.assertNotIn("Non-publishable experimental smoke run", report)
-        self.assertIn("Routed action gate: **9/9** Capsule v5 runs.", report)
+        self.assertIn("Routed action gate: **9/9** Capsule v6 runs.", report)
 
         def add_command(
             target: dict[str, object],
@@ -2820,7 +3051,7 @@ class BenchmarkCliTest(unittest.TestCase):
         incomplete_report = handoff.report(incomplete)
         self.assertIn("cannot establish a publishable token-saving result", incomplete_report)
         self.assertIn(
-            "only 8/9 Packet v3/Capsule v5 pairs were jointly successful",
+            "only 8/9 Packet v3/Capsule v6 pairs were jointly successful",
             incomplete_report,
         )
 
@@ -2846,25 +3077,25 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 90), handoff.CAPSULE_V5
+                aggregates(100, 100, 90, 90), handoff.CAPSULE_V6
             ),
             (0.0, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 80), handoff.CAPSULE_V5
+                aggregates(100, 100, 110, 80), handoff.CAPSULE_V6
             ),
             (0.5, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 120), handoff.CAPSULE_V5
+                aggregates(100, 100, 90, 120), handoff.CAPSULE_V6
             ),
             (0.0, 0.5),
         )
         self.assertIsNone(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 110), handoff.CAPSULE_V5
+                aggregates(100, 100, 110, 110), handoff.CAPSULE_V6
             )
         )
 

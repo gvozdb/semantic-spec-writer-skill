@@ -19,7 +19,7 @@ execution packets are intentionally bound to the validated repository snapshot.
 - allows short explanations as comment lines starting with `#`;
 - keeps domain vocabulary local to each specification;
 - compiles repository handoffs into file-owned `do` actions with validated source anchors and stale-route detection;
-- compiles Packet v3 plus exact routed source into sealed Capsule v5 execution context with an edit-before-verify gate and terminal execution lock.
+- compiles Packet v3 plus exact routed source into sealed Capsule v6 execution context with an edit-before-verify gate and sealed next-action focus.
 
 ## Benefits
 
@@ -104,19 +104,20 @@ confidence interval crossed zero.
 
 ### Context capsule benchmark
 
-Capsule v5 embeds a validated Packet v3 and its exact routed source snapshot.
+Capsule v6 embeds a validated Packet v3 and its exact routed source snapshot.
 Its sealed control identifies source frames as current pre-edit data, rejects a
 no-edit outcome, and requires every routed edit in one bundled file-change
 operation before any repository read or command. The exact declared verification
 then runs alone exactly once; any additional tool call fails the action gate. The
 mandatory `do` list is repeated beside each source frame so the model does not
 have to cross-reference a global route while constructing the one-shot patch. A
-sealed execution lock after the final source frame repeats the exact mutation
-paths and `V1`, then makes `V1 exit 0 -> final answer with zero tools remaining`
-the last actionable instruction. Provider prompts use the
-`capsule-v5-terminal-1` profile: no conflicting generic syntax check, and the
-terminal transition is repeated after the artifact for recency. The
-two-arm harness compares Capsule v5 directly with Packet v3, securely compares
+sealed next-action record after the final source frame repeats only the mutation
+paths and required first `file_change`; it deliberately omits `V1` so the tail
+cannot prime an early command. The leading control owns the full
+`file_change -> V1 -> final answer` sequence. Provider prompts use the
+`capsule-v6-next-action-1` profile: no conflicting generic syntax check and no
+competing instruction after the artifact. The
+two-arm harness compares Capsule v6 directly with Packet v3, securely compares
 every routed post-state with the captured starter, and fails no-edit, partial
 edit, split-edit, pre-edit command, substituted verification, or multi-attempt
 outcomes. It
@@ -249,7 +250,7 @@ Convert this technical specification to a compact .spec.ctx file.
 Create an implementation plan as .plan.ctx from this issue and the current codebase.
 Rewrite docs/auth.md as a self-contained semantic spec without inventing requirements.
 Create a repository execution packet for this issue with the smallest complete edit route.
-Compile this validated execution packet into a Capsule v5 handoff.
+Compile this validated execution packet into a Capsule v6 handoff.
 ```
 
 ## Repository execution packets
@@ -278,7 +279,7 @@ Packet v3 on the same multi-file tasks. Packet v3 versus Semantic v1 is the
 primary comparison; see [methodology and commands](benchmarks/README.md).
 
 For a costly handoff or repeated execution, compile the validated packet and
-its routed source into Capsule v5:
+its routed source into Capsule v6:
 
 ```bash
 python3 skills/semantic-spec-writer/scripts/context_capsule.py build \

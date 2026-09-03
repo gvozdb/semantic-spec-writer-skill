@@ -216,15 +216,15 @@ Published `gpt-5.6-terra`, medium-reasoning Packet v3 run:
 See the [rendered report](../HANDOFF_BENCHMARK.md) and
 [historical raw result — unsanitized, non-secret-only](results/published/gpt-5.6-terra-medium-20260902-execution-packet/handoff-r3.json).
 
-Run the two-arm Packet v3 versus Capsule v5 benchmark independently:
+Run the two-arm Packet v3 versus Capsule v6 benchmark independently:
 
 ```bash
-python3 -B benchmarks/handoff.py static --comparison capsule-v5
+python3 -B benchmarks/handoff.py static --comparison capsule-v6
 
 CAPSULE_RUN_NAME=your-model-medium-yyyymmdd-context-capsule
 
 python3 -B benchmarks/handoff.py run \
-  --comparison capsule-v5 \
+  --comparison capsule-v6 \
   --provider codex \
   --model YOUR_MODEL \
   --reasoning-effort medium \
@@ -244,13 +244,13 @@ python3 -B benchmarks/handoff.py report \
 The Capsule report distinguishes total discovery/read events from classified
 pre-edit events, measures combined input plus output tokens, and reports an
 input-only cache-price break-even without hardcoding provider prices. Current
-schema-v3 evidence records the exact `capsule-v5-terminal-1` execution profile.
+Schema-v4 evidence records the exact `capsule-v6-next-action-1` execution profile.
 A Capsule
 run is claim-eligible only when one file-change operation contains every routed
 edit, the exact declared verification runs alone exactly once, no other tool
-call occurs, the sealed tail execution lock matches those routes and exact
-verification, the terminal execution profile remains the final prompt
-instruction, and the provider attempt count is one. Provider telemetry and
+call occurs, the sealed tail next-action record matches those routes and names
+only the first file-change action, no competing host instruction follows the
+artifact, and the provider attempt count is one. Provider telemetry and
 grades remain self-reported; a separate
 secure routed-file comparison makes no-edit and partial-edit outcomes fail
 regardless of reported status or verification exit. Publication also requires
