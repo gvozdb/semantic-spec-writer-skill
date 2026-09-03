@@ -50,11 +50,17 @@ HEX_OBJECT = re.compile(r"[0-9a-f]{40,64}\Z")
 HEX_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 REQUIRED_CODE_PATHS = (
     "benchmarks/benchmark.py",
+    "benchmarks/capsule-lifecycle-v1.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
+    "benchmarks/lifecycle.py",
     "benchmarks/solution_runtime.py",
     "benchmarks/solution_worker.py",
     "benchmarks/validate_capsule_release.py",
+    "skills/semantic-spec-writer/SKILL.md",
+    "skills/semantic-spec-writer/references/context-capsules.md",
+    "skills/semantic-spec-writer/references/execution-packets.md",
+    "skills/semantic-spec-writer/scripts/check_conversion.py",
     "skills/semantic-spec-writer/scripts/check_execution_packet.py",
     "skills/semantic-spec-writer/scripts/context_capsule.py",
 )
@@ -876,6 +882,30 @@ def _materialize_fixture_blobs(
     return cases
 
 
+def _materialize_code_subtree(
+    directory: Path,
+    prefix: str,
+    code_blobs: dict[str, bytes],
+) -> Path:
+    target_root = directory / PurePosixPath(prefix).name
+    target_root.mkdir(mode=0o700)
+    source_prefix = PurePosixPath(prefix)
+    found = False
+    for path, payload in sorted(code_blobs.items()):
+        source = PurePosixPath(path)
+        try:
+            relative = source.relative_to(source_prefix)
+        except ValueError:
+            continue
+        target = target_root.joinpath(*relative.parts)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _write_private_file(target, payload)
+        found = True
+    if not found:
+        raise ReleaseError(f"attested code subtree is empty: {prefix}")
+    return target_root
+
+
 def _remove_repository_import_paths() -> None:
     clean: list[str] = []
     root = ROOT.resolve()
@@ -930,6 +960,11 @@ def main() -> int:
         "benchmarks/benchmark.py",
         code_blobs,
     )
+    lifecycle = _load_attested_module(
+        "lifecycle",
+        "benchmarks/lifecycle.py",
+        code_blobs,
+    )
     handoff = _load_attested_module(
         "_semantic_spec_capsule_release_handoff",
         "benchmarks/handoff.py",
@@ -945,6 +980,20 @@ def main() -> int:
             ],
         )
         benchmark.EXECUTION_PACKET_CHECK = checker
+        private_skill = _materialize_code_subtree(
+            private_root,
+            "skills/semantic-spec-writer",
+            code_blobs,
+        )
+        lifecycle.SKILL_DIR = private_skill
+        lifecycle.SKILL = private_skill / "SKILL.md"
+        handoff.SKILL_DIR = private_skill
+        private_protocol = private_root / "capsule-lifecycle-v1.prereg.json"
+        _write_private_file(
+            private_protocol,
+            code_blobs["benchmarks/capsule-lifecycle-v1.prereg.json"],
+        )
+        handoff.LIFECYCLE_PROTOCOL_PATH = private_protocol
         handoff.CASES_DIR = _materialize_fixture_blobs(
             private_root,
             fixture_blobs,

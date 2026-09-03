@@ -2742,6 +2742,302 @@ class BenchmarkCliTest(unittest.TestCase):
             by_key[key]["run_order"] = run_order
         return cases, document, results
 
+    def _capsule_lifecycle_document(self, handoff):
+        cases, document, results = self._capsule_credible_handoff_document(handoff)
+        lifecycle = handoff.lifecycle_benchmark
+        protocol, protocol_bytes = handoff.lifecycle_protocol()
+        revision = {
+            "commit": "unit-test-revision",
+            "worktree_clean_at_start": True,
+            "required_paths": {},
+        }
+        generation = lifecycle.generation_document(
+            Namespace(
+                provider="codex",
+                model=protocol["model"],
+                reasoning_effort=protocol["reasoning_effort"],
+                timeout_seconds=protocol["timeout_seconds"],
+                token_encoding=None,
+                max_attempts=1,
+                cases_dir=HANDOFF_CASES,
+            ),
+            cases,
+            revision,
+        )
+        for case in cases:
+            snapshot = generation["fixture_snapshot"][case.id]
+            source = (case.path / "baseline.md").read_text(encoding="utf-8")
+            packet = (case.path / "packet.spec.ctx").read_text(encoding="utf-8")
+            prompt_sha256 = benchmark_module.sha256_bytes(
+                lifecycle.generation_prompt(case, None).encode("utf-8")
+            )
+            attempt_provider = lifecycle.mock_provider()
+            attempt_provider["duration_seconds"] = 1.0
+            attempt_provider["usage"] = {
+                "input_tokens": 5,
+                "uncached_input_tokens": 5,
+                "output_tokens": 5,
+            }
+            attempt_provider = benchmark_module.redact_provider_telemetry(
+                attempt_provider
+            )
+            specification = benchmark_module.attest_text(packet)
+            provenance = {
+                "source_sha256": snapshot["source_sha256"],
+                "spec_sha256": benchmark_module.sha256_bytes(packet.encode("utf-8")),
+                "prompt_sha256": prompt_sha256,
+                "starter_sha256": snapshot["starter_sha256"],
+                "fixture_sha256": snapshot["fixture_sha256"],
+                "skill_sha256": generation["skill_sha256"],
+            }
+            attempt = {
+                "attempt": 1,
+                "artifact": f"attempts/{case.id}-a1.spec.ctx",
+                "specification": specification,
+                "semantic": benchmark_module.text_metrics(packet),
+                "conversion_check": {
+                    "encoding": None,
+                    "source": {
+                        "bytes": len(source.encode("utf-8")),
+                        "words": len(source.split()),
+                    },
+                    "output": {
+                        "bytes": len(packet.encode("utf-8")),
+                        "words": len(packet.split()),
+                    },
+                    "smaller_bytes": len(packet.encode("utf-8"))
+                    < len(source.encode("utf-8")),
+                    "smaller_words": len(packet.split()) < len(source.split()),
+                },
+                "provenance": provenance,
+                "provider": attempt_provider,
+                "error": None,
+            }
+            generation["results"].append({
+                "case": case.id,
+                "artifact": f"specs/{case.id}.spec.ctx",
+                "selected_attempt": 1,
+                "attempts": [attempt],
+                "specification": specification,
+                "source": benchmark_module.text_metrics(source),
+                "semantic": benchmark_module.text_metrics(packet),
+                "compression": {
+                    "bytes_percent": benchmark_module.compression_percent(
+                        len(source.encode("utf-8")), len(packet.encode("utf-8"))
+                    ),
+                    "words_percent": benchmark_module.compression_percent(
+                        len(source.split()), len(packet.split())
+                    ),
+                },
+                "provenance": provenance,
+                "provider": benchmark_module.redact_provider_telemetry(
+                    lifecycle.aggregate_attempt_providers([attempt], 1)
+                ),
+                "error": None,
+            })
+
+        config = handoff.MARKDOWN_CAPSULE_LIFECYCLE_V1
+        snapshots = {}
+        for case in cases:
+            packet_bytes = (case.path / "packet.spec.ctx").read_bytes()
+            snapshots[case.id] = handoff.case_snapshot(
+                case,
+                config,
+                packet_bytes=packet_bytes,
+            )
+        for result in results:
+            snapshot = snapshots[result["case"]]
+            specification = handoff.capsule_snapshot_artifacts(
+                snapshot,
+                config,
+            )[result["variant"]]
+            result["spec"] = benchmark_module.text_metrics(specification)
+            result["provenance"] = handoff.result_provenance(
+                snapshot,
+                result["variant"],
+                specification,
+                config,
+            )
+        document.update({
+            "schema_version": 6,
+            "kind": config.kind,
+            "created_at": "2026-09-03T00:00:00+00:00",
+            "oracle_exposure": "unit-test-private-grader",
+            "comparison": config.name,
+            "lifecycle_version": 1,
+            "claim_protocol": handoff.LIFECYCLE_CLAIM_PROTOCOL,
+            "model": protocol["model"],
+            "reasoning_effort": protocol["reasoning_effort"],
+            "timeout_seconds": protocol["timeout_seconds"],
+            "protocol": benchmark_module.attest_bytes(protocol_bytes),
+            "protocol_sha256": benchmark_module.sha256_bytes(
+                protocol_bytes
+            ),
+            "baseline_authoring": "source-markdown-direct-zero-model-calls",
+            "authoring": generation,
+            "code_revision": revision,
+            "environment": {
+                "python": "3.12",
+                "codex": "test-codex",
+                "git_commit": "unit-test-revision",
+            },
+            "fixture_snapshot": snapshots,
+            "static": handoff.capsule_static_rows_from_snapshots(
+                cases,
+                snapshots,
+                config,
+            ),
+            "results": results,
+        })
+        return cases, document, results
+
+    def test_capsule_lifecycle_gate_charges_authoring_and_keeps_failed_baseline(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_claim", HANDOFF)
+        _, document, results = self._capsule_lifecycle_document(handoff)
+        failed = next(result for result in results if result["variant"] == "markdown")
+        snapshot = document["fixture_snapshot"][failed["case"]]
+        failed["grade"] = benchmark_module.redact_grade({
+            "passed": snapshot["grading"]["test_total"] - 1,
+            "total": snapshot["grading"]["test_total"],
+            "acceptance_passed": snapshot["grading"]["acceptance_total"] - 1,
+            "acceptance_total": snapshot["grading"]["acceptance_total"],
+            "pass_rate": (
+                snapshot["grading"]["test_total"] - 1
+            ) / snapshot["grading"]["test_total"],
+            "acceptance_pass_rate": (
+                snapshot["grading"]["acceptance_total"] - 1
+            ) / snapshot["grading"]["acceptance_total"],
+            "task_success": False,
+            "failures": ["synthetic hidden-test failure"],
+        })
+
+        self.assertTrue(handoff.capsule_report_is_credible(document, results))
+        self.assertEqual(
+            handoff.lifecycle_authoring_total(document, "combined_tokens"),
+            30.0,
+        )
+        primary = handoff.lifecycle_comparison(document, "combined_tokens")
+        self.assertEqual(primary["pairs"], 9)
+        self.assertEqual(primary["wins"], 9)
+        self.assertEqual(primary["baseline_total"], 1080.0)
+        self.assertEqual(primary["candidate_total"], 990.0)
+        report = handoff.report(document)
+        self.assertNotIn("Non-publishable", report)
+        self.assertIn("Authoring (3 artifacts) | 0 | 30", report)
+        self.assertIn("Strict equal-success coverage: **8/9**", report)
+        self.assertEqual(
+            handoff.validate_capsule_release(document, report.encode("utf-8")),
+            [],
+        )
+        self.assertIn(
+            "Capsule report is not the exact rendering of its result",
+            handoff.validate_capsule_release(
+                document,
+                report.encode("utf-8") + b"tampered\n",
+            ),
+        )
+
+    def test_capsule_lifecycle_gate_rejects_cost_regression_and_tampering(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_rejection", HANDOFF)
+        _, document, _ = self._capsule_lifecycle_document(handoff)
+        expensive = json.loads(json.dumps(document))
+        for result in expensive["authoring"]["results"]:
+            attempt = result["attempts"][0]
+            attempt["provider"]["usage"] = {
+                "input_tokens": 100,
+                "uncached_input_tokens": 100,
+                "output_tokens": 100,
+            }
+            result["provider"] = benchmark_module.redact_provider_telemetry(
+                handoff.lifecycle_benchmark.aggregate_attempt_providers(
+                    result["attempts"],
+                    1,
+                )
+            )
+        expensive_report = handoff.report(expensive)
+        self.assertIn("Non-publishable", expensive_report)
+        self.assertIn("used fewer one-use lifecycle tokens", expensive_report)
+        self.assertTrue(
+            handoff.validate_capsule_release(
+                expensive,
+                expensive_report.encode("utf-8"),
+            )
+        )
+
+        tampered = json.loads(json.dumps(document))
+        result = tampered["authoring"]["results"][0]
+        result["provenance"]["prompt_sha256"] = "0" * 64
+        result["attempts"][0]["provenance"]["prompt_sha256"] = "0" * 64
+        self.assertFalse(
+            handoff.capsule_report_is_credible(tampered, tampered["results"])
+        )
+
+        protocol_tampered = json.loads(json.dumps(document))
+        protocol, _ = handoff.lifecycle_protocol()
+        protocol["seed"] += 1
+        protocol_payload = json.dumps(protocol, sort_keys=True).encode("utf-8")
+        protocol_tampered["protocol"] = benchmark_module.attest_bytes(
+            protocol_payload
+        )
+        protocol_tampered["protocol_sha256"] = benchmark_module.sha256_bytes(
+            protocol_payload
+        )
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                protocol_tampered,
+                protocol_tampered["results"],
+            )
+        )
+
+        raw_authoring = json.loads(json.dumps(document))
+        raw_authoring["authoring"]["results"][0]["attempts"][0]["provider"][
+            "stderr_tail"
+        ] = "private provider output"
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                raw_authoring,
+                raw_authoring["results"],
+            )
+        )
+
+        extra_document_field = json.loads(json.dumps(document))
+        extra_document_field["provider_output"] = "private provider output"
+        self.assertFalse(
+            handoff.capsule_report_is_credible(
+                extra_document_field,
+                extra_document_field["results"],
+            )
+        )
+
+    def test_capsule_lifecycle_preregistration_is_type_strict(self) -> None:
+        handoff = load_module("benchmark_capsule_lifecycle_protocol", HANDOFF)
+        protocol, _ = handoff.lifecycle_protocol()
+        self.assertTrue(handoff.lifecycle_protocol_is_supported(protocol))
+
+        mutations = {
+            "boolean schema": lambda value: value.update(schema_version=True),
+            "boolean confidence": lambda value: value["bootstrap"].update(
+                confidence=True
+            ),
+            "empty model": lambda value: value.update(model=""),
+            "weakened gate": lambda value: value["release_gate"].pop(),
+        }
+        for name, mutate in mutations.items():
+            forged = json.loads(json.dumps(protocol))
+            mutate(forged)
+            with self.subTest(name=name):
+                self.assertFalse(
+                    handoff.lifecycle_protocol_is_supported(forged)
+                )
+
+    def test_execution_only_capsule_result_is_not_lifecycle_release_evidence(self) -> None:
+        handoff = load_module("benchmark_capsule_execution_only_release", HANDOFF)
+        _, document, _ = self._capsule_credible_handoff_document(handoff)
+        report = handoff.report(document)
+        self.assertTrue(
+            handoff.validate_capsule_release(document, report.encode("utf-8"))
+        )
+
     def test_handoff_legacy_v3_published_report_stays_compatible(self) -> None:
         handoff = load_module("benchmark_handoff_legacy_report", HANDOFF)
         published = (

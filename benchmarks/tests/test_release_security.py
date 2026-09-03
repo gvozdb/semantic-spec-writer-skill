@@ -26,11 +26,17 @@ CORE_REQUIRED = (
 )
 LAUNCHER_REQUIRED = (
     "benchmarks/benchmark.py",
+    "benchmarks/capsule-lifecycle-v1.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
+    "benchmarks/lifecycle.py",
     "benchmarks/solution_runtime.py",
     "benchmarks/solution_worker.py",
     "benchmarks/validate_capsule_release.py",
+    "skills/semantic-spec-writer/SKILL.md",
+    "skills/semantic-spec-writer/references/context-capsules.md",
+    "skills/semantic-spec-writer/references/execution-packets.md",
+    "skills/semantic-spec-writer/scripts/check_conversion.py",
     "skills/semantic-spec-writer/scripts/check_execution_packet.py",
     "skills/semantic-spec-writer/scripts/context_capsule.py",
 )

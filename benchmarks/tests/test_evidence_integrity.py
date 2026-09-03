@@ -573,7 +573,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
             )
         )
 
-    def test_current_capsule_release_validation_consumes_exact_pair(self) -> None:
+    def test_execution_only_capsule_evidence_cannot_be_released(self) -> None:
         handoff = load_module("handoff_capsule_release", HANDOFF)
         document = self._credible_capsule_document(handoff)
         self.assertNotIn("token_encoding", document)
@@ -608,14 +608,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 ),
             ),
         ):
-            self.assertEqual(
+            self.assertIn(
+                "Capsule result does not satisfy current credibility gates",
                 handoff.validate_capsule_release(document, rendered),
-                [],
             )
-        self.assertIn(
-            "Capsule report is not the exact rendering of its result",
-            handoff.validate_capsule_release(document, rendered + b"tampered\n"),
-        )
         legacy_family = copy.deepcopy(document)
         legacy_family["comparison"] = "capsule-v6"
         legacy_family["kind"] = "semantic-context-capsule-comparison"

@@ -31,19 +31,27 @@ from typing import Any, NamedTuple
 BENCHMARKS = Path(__file__).resolve().parent
 ROOT = BENCHMARKS.parent
 CASES_DIR = BENCHMARKS / "handoff-cases"
+SKILL_DIR = ROOT / "skills" / "semantic-spec-writer"
+LIFECYCLE_PROTOCOL_PATH = BENCHMARKS / "capsule-lifecycle-v1.prereg.json"
 VARIANTS = {
     "markdown": "baseline.md",
     "semantic": "semantic.spec.ctx",
     "packet": "packet.spec.ctx",
 }
-CAPSULE_SCRIPT = ROOT / "skills" / "semantic-spec-writer" / "scripts" / "context_capsule.py"
+CAPSULE_SCRIPT = SKILL_DIR / "scripts" / "context_capsule.py"
 CAPSULE_CODE_PATHS = (
     "benchmarks/benchmark.py",
+    "benchmarks/capsule-lifecycle-v1.prereg.json",
     "benchmarks/grader.py",
     "benchmarks/handoff.py",
+    "benchmarks/lifecycle.py",
     "benchmarks/solution_runtime.py",
     "benchmarks/solution_worker.py",
     "benchmarks/validate_capsule_release.py",
+    "skills/semantic-spec-writer/SKILL.md",
+    "skills/semantic-spec-writer/references/context-capsules.md",
+    "skills/semantic-spec-writer/references/execution-packets.md",
+    "skills/semantic-spec-writer/scripts/check_conversion.py",
     "skills/semantic-spec-writer/scripts/check_execution_packet.py",
     "skills/semantic-spec-writer/scripts/context_capsule.py",
 )
@@ -107,7 +115,20 @@ MARKDOWN_CAPSULE_V6 = ComparisonConfig(
     "capsule",
     (("markdown", "Ordinary Markdown"), ("capsule", "Capsule v6")),
 )
-CAPSULE_COMPARISONS = (CAPSULE_V6, MARKDOWN_CAPSULE_V6)
+MARKDOWN_CAPSULE_LIFECYCLE_V1 = ComparisonConfig(
+    "markdown-capsule-lifecycle-v1",
+    "markdown-context-capsule-lifecycle-comparison",
+    (("packet_version", 3), ("capsule_version", 6), ("lifecycle_version", 1)),
+    ("markdown", "capsule"),
+    "markdown",
+    "capsule",
+    (("markdown", "Ordinary Markdown"), ("capsule", "Capsule v6")),
+)
+CAPSULE_COMPARISONS = (
+    CAPSULE_V6,
+    MARKDOWN_CAPSULE_V6,
+    MARKDOWN_CAPSULE_LIFECYCLE_V1,
+)
 COMPARISONS = {
     config.name: config
     for config in (PACKET_V3, *CAPSULE_COMPARISONS)
@@ -126,6 +147,113 @@ CAPSULE_ACTION_ERROR_CODES = frozenset({
 })
 sys.path.insert(0, str(BENCHMARKS))
 import benchmark as core  # noqa: E402
+import lifecycle as lifecycle_benchmark  # noqa: E402
+
+
+LIFECYCLE_CLAIM_PROTOCOL = "markdown-capsule-full-lifecycle-dominance-v1"
+LIFECYCLE_RELEASE_GATE = (
+    "full corpus and exact paired schedule",
+    "one successful authoring attempt per fixture with complete token telemetry",
+    "Capsule succeeds with every hidden test and acceptance check in every pair",
+    "Capsule quality is componentwise no worse in every pair",
+    "Capsule action gate passes in every implementation",
+    "Capsule one-use lifecycle total tokens are lower in every pair",
+    "fixture-cluster bootstrap confidence interval lower bound is greater than zero",
+    "measured three-use Capsule lifecycle total tokens are lower",
+    "no provider, verification, provenance, privacy, or recorded run errors",
+)
+
+
+def lifecycle_protocol_is_supported(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version",
+        "protocol_id",
+        "comparison",
+        "corpus",
+        "provider",
+        "model",
+        "reasoning_effort",
+        "timeout_seconds",
+        "implementation_repetitions",
+        "seed",
+        "authoring_attempts_per_fixture",
+        "baseline_authoring",
+        "candidate_authoring",
+        "primary_metric",
+        "primary_population",
+        "bootstrap",
+        "release_gate",
+        "retry_policy",
+    }:
+        return False
+    corpus = value.get("corpus")
+    bootstrap = value.get("bootstrap")
+
+    def positive_int(item: Any) -> bool:
+        return isinstance(item, int) and not isinstance(item, bool) and item > 0
+
+    return bool(
+        type(value.get("schema_version")) is int
+        and value["schema_version"] == 1
+        and value.get("protocol_id") == LIFECYCLE_CLAIM_PROTOCOL
+        and value.get("comparison") == MARKDOWN_CAPSULE_LIFECYCLE_V1.name
+        and value.get("provider") == "codex"
+        and isinstance(value.get("model"), str)
+        and value["model"]
+        and isinstance(value.get("reasoning_effort"), str)
+        and value["reasoning_effort"]
+        and positive_int(value.get("timeout_seconds"))
+        and positive_int(value.get("implementation_repetitions"))
+        and value["implementation_repetitions"] >= 3
+        and positive_int(value.get("seed"))
+        and type(value.get("authoring_attempts_per_fixture")) is int
+        and value["authoring_attempts_per_fixture"] == 1
+        and isinstance(corpus, list)
+        and corpus
+        and all(isinstance(case, str) and case for case in corpus)
+        and len(corpus) == len(set(corpus))
+        and value.get("baseline_authoring")
+        == "source-markdown-direct-zero-model-calls"
+        and value.get("candidate_authoring")
+        == "model-authored-packet-v3-then-deterministic-capsule-v6"
+        and value.get("primary_metric")
+        == (
+            "authoring_input_tokens + authoring_output_tokens + "
+            "implementation_input_tokens + implementation_output_tokens"
+        )
+        and value.get("primary_population")
+        == "all complete paired attempts including quality failures"
+        and isinstance(bootstrap, dict)
+        and set(bootstrap) == {"unit", "iterations", "seed", "confidence"}
+        and bootstrap.get("unit") == "fixture_median"
+        and type(bootstrap.get("iterations")) is int
+        and bootstrap["iterations"] == 10_000
+        and type(bootstrap.get("seed")) is int
+        and bootstrap["seed"] == value["seed"]
+        and isinstance(bootstrap.get("confidence"), (int, float))
+        and not isinstance(bootstrap["confidence"], bool)
+        and bootstrap["confidence"] == 0.95
+        and value.get("release_gate") == list(LIFECYCLE_RELEASE_GATE)
+        and value.get("retry_policy")
+        == "no rerun or threshold change after observing outcomes"
+    )
+
+
+def lifecycle_protocol() -> tuple[dict[str, Any], bytes]:
+    payload = core.read_stable_regular_file(
+        LIFECYCLE_PROTOCOL_PATH,
+        "Capsule lifecycle preregistration",
+        max_bytes=64 * 1024,
+    )
+    try:
+        value = json.loads(payload)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Capsule lifecycle preregistration is invalid") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("Capsule lifecycle preregistration must be an object")
+    if not lifecycle_protocol_is_supported(value):
+        raise RuntimeError("Capsule lifecycle preregistration is unsupported")
+    return value, payload
 
 
 def comparison_config(value: ComparisonConfig | str | None = None) -> ComparisonConfig:
@@ -160,6 +288,8 @@ def capsule_schema_version(config: ComparisonConfig) -> int:
         return 4
     if config == MARKDOWN_CAPSULE_V6:
         return 5
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        return 6
     raise ValueError(f"{config.name}: not a Capsule comparison")
 
 
@@ -507,6 +637,7 @@ def case_snapshot(
     fixture_snapshot: core.FixtureTreeSnapshot | None = None,
     starter_snapshot: core.FixtureTreeSnapshot | None = None,
     grading_snapshot: core.GradingSnapshot | None = None,
+    packet_bytes: bytes | None = None,
 ) -> dict[str, Any]:
     config = comparison_config(comparison)
     fixture_snapshot = fixture_snapshot or core.snapshot_fixture_tree(case.path)
@@ -545,17 +676,21 @@ def case_snapshot(
             },
         }
 
-    packet_bytes = core.fixture_snapshot_file(
-        fixture_snapshot,
-        VARIANTS["packet"],
-    ).data
+    generated_packet = config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+    if packet_bytes is None:
+        if generated_packet:
+            raise RuntimeError(f"{case.id}: lifecycle run lacks a generated Packet v3")
+        packet_bytes = core.fixture_snapshot_file(
+            fixture_snapshot,
+            VARIANTS["packet"],
+        ).data
     capsule_text, capsule_metadata = capsule_artifact(
         case,
         starter_snapshot=starter_snapshot,
         packet_bytes=packet_bytes,
     )
     artifacts = {**captured_artifacts, "capsule": capsule_text}
-    return {
+    snapshot = {
         "fixture_sha256": fixture_snapshot.sha256,
         "starter_sha256": starter_snapshot.sha256,
         "verification_fixture_sha256": verification_hash,
@@ -575,6 +710,9 @@ def case_snapshot(
         },
         "capsule": capsule_metadata,
     }
+    if generated_packet:
+        snapshot["packet"] = core.attest_bytes(packet_bytes)
+    return snapshot
 
 
 def capsule_snapshot_artifacts(
@@ -646,7 +784,19 @@ def require_case_snapshot(
     expected: dict[str, Any],
     comparison: ComparisonConfig | str | None = None,
 ) -> None:
-    if case_snapshot(case, comparison) != expected:
+    config = comparison_config(comparison)
+    packet_bytes = None
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        try:
+            packet_bytes = core.attested_bytes(
+                expected.get("packet") if isinstance(expected, dict) else None,
+                f"{case.id} generated Packet v3",
+            )
+        except (TypeError, UnicodeError, ValueError) as exc:
+            raise RuntimeError(
+                f"{case.id}: lifecycle snapshot lacks generated Packet v3"
+            ) from exc
+    if case_snapshot(case, config, packet_bytes=packet_bytes) != expected:
         raise RuntimeError(f"{case.id}: benchmark fixture changed during run")
 
 
@@ -755,6 +905,8 @@ def create_document(
     variants: list[str],
     comparison: ComparisonConfig | str | None = None,
     code_revision: dict[str, Any] | None = None,
+    packet_bytes_by_case: dict[str, bytes] | None = None,
+    authoring: dict[str, Any] | None = None,
 ) -> HandoffRunDocument:
     config = comparison_config(comparison)
     corpus = core.discover_cases(cases_dir=CASES_DIR)
@@ -772,6 +924,11 @@ def create_document(
             fixture_snapshot=fixture,
             starter_snapshot=starter,
             grading_snapshot=grading,
+            packet_bytes=(
+                packet_bytes_by_case.get(case.id)
+                if packet_bytes_by_case is not None
+                else None
+            ),
         )
         snapshots[case.id] = snapshot
         starter_snapshots[case.id] = starter
@@ -810,6 +967,7 @@ def create_document(
         "provider": args.provider,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "timeout_seconds": getattr(args, "timeout_seconds", 600),
         "repetitions": args.repetitions,
         "seed": args.seed,
         "telemetry_attestation": "none",
@@ -840,9 +998,83 @@ def create_document(
             context_capsule_module().CAPSULE_EXECUTION_PROFILE
         )
         document["code_revision"] = code_revision
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        if authoring is None:
+            raise RuntimeError("lifecycle comparison requires authoring evidence")
+        protocol, protocol_bytes = lifecycle_protocol()
+        if protocol.get("protocol_id") != LIFECYCLE_CLAIM_PROTOCOL:
+            raise RuntimeError("lifecycle claim protocol id does not match the harness")
+        document["claim_protocol"] = LIFECYCLE_CLAIM_PROTOCOL
+        document["protocol"] = core.attest_bytes(protocol_bytes)
+        document["protocol_sha256"] = core.sha256_bytes(protocol_bytes)
+        document["baseline_authoring"] = protocol["baseline_authoring"]
+        document["authoring"] = authoring
     for field, version in config.versions:
         document[field] = version
     return document
+
+
+def generated_packet_bytes(
+    authoring: dict[str, Any],
+    cases: list[core.BenchmarkCase],
+) -> dict[str, bytes]:
+    """Extract every selected generated Packet from exact embedded attestations."""
+
+    results = authoring.get("results")
+    if not isinstance(results, list):
+        raise RuntimeError("authoring result has no generated artifacts")
+    by_case = {
+        result.get("case"): result
+        for result in results
+        if isinstance(result, dict) and isinstance(result.get("case"), str)
+    }
+    if set(by_case) != {case.id for case in cases} or len(by_case) != len(results):
+        raise RuntimeError("authoring result does not cover the exact benchmark corpus")
+    packets: dict[str, bytes] = {}
+    for case in cases:
+        result = by_case[case.id]
+        if result.get("selected_attempt") != 1 or result.get("error") is not None:
+            raise RuntimeError(f"{case.id}: authoring did not select its first attempt")
+        attempts = result.get("attempts")
+        if not isinstance(attempts, list) or len(attempts) != 1:
+            raise RuntimeError(f"{case.id}: authoring must contain exactly one attempt")
+        text = core.attested_text(
+            result.get("specification"),
+            f"{case.id} generated Packet v3",
+            max_bytes=lifecycle_benchmark.MAX_GENERATED_ARTIFACT_BYTES,
+        )
+        if attempts[0].get("specification") != result.get("specification"):
+            raise RuntimeError(f"{case.id}: selected Packet evidence does not match")
+        packets[case.id] = text.encode("utf-8")
+    return packets
+
+
+def generate_lifecycle_authoring(
+    args: argparse.Namespace,
+    cases: list[core.BenchmarkCase],
+    code_revision: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Run one fully accounted authoring attempt for each benchmark fixture."""
+
+    with tempfile.TemporaryDirectory(prefix="capsule-authoring-bench-") as directory:
+        generation_args = argparse.Namespace(
+            provider=args.provider,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            case=[case.id for case in cases],
+            cases_dir=CASES_DIR,
+            timeout_seconds=args.timeout_seconds,
+            token_encoding=None,
+            max_attempts=1,
+            output=Path(directory) / "generated",
+        )
+        generation_output = lifecycle_benchmark.generate(
+            generation_args,
+            code_revision=code_revision,
+        )
+        with core.open_pinned_json(generation_output / "generation.json") as pinned:
+            authoring = json.loads(json.dumps(pinned.document))
+    return authoring, generated_packet_bytes(authoring, cases)
 
 
 def paired_job_schedule(
@@ -905,13 +1137,37 @@ def run(args: argparse.Namespace) -> Path:
         raise ValueError(
             f"{config.name}: --variant is limited to "
             f"{', '.join(config.variants)}"
-    )
+        )
+    authoring = None
+    packet_bytes_by_case = None
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        if variant_names != list(config.variants):
+            raise ValueError("lifecycle comparison requires both benchmark arms")
+        protocol, _ = lifecycle_protocol()
+        if args.provider == "codex" and any((
+            args.model != protocol.get("model"),
+            args.reasoning_effort != protocol.get("reasoning_effort"),
+            args.timeout_seconds != protocol.get("timeout_seconds"),
+            args.repetitions != protocol.get("implementation_repetitions"),
+            args.seed != protocol.get("seed"),
+            [case.id for case in cases] != protocol.get("corpus"),
+        )):
+            raise ValueError("real lifecycle run must exactly match the preregistered protocol")
+        authoring, packet_bytes_by_case = generate_lifecycle_authoring(
+            args,
+            cases,
+            code_revision,
+        )
+        if code_revision is not None:
+            core.require_git_worktree_revision(code_revision, CAPSULE_CODE_PATHS)
     document = create_document(
         args,
         cases,
         variant_names,
         config,
         code_revision=code_revision,
+        packet_bytes_by_case=packet_bytes_by_case,
+        authoring=authoring,
     )
     if code_revision is not None:
         core.require_git_worktree_revision(code_revision, CAPSULE_CODE_PATHS)
@@ -1829,7 +2085,7 @@ def _validated_capsule_snapshot(
 ) -> dict[str, str] | None:
     """Validate Capsule evidence while deriving every row from attested bytes."""
 
-    if not isinstance(snapshot, dict) or set(snapshot) != {
+    expected_keys = {
         "fixture_sha256",
         "starter_sha256",
         "verification_fixture_sha256",
@@ -1838,14 +2094,24 @@ def _validated_capsule_snapshot(
         "variants",
         "prompts",
         "capsule",
-    }:
+    }
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        expected_keys.add("packet")
+    if not isinstance(snapshot, dict) or set(snapshot) != expected_keys:
         return None
     try:
         artifacts = capsule_snapshot_artifacts(snapshot, config)
-        packet_bytes = core.fixture_snapshot_file(
-            fixture_snapshot,
-            VARIANTS["packet"],
-        ).data
+        packet_bytes = (
+            core.attested_bytes(
+                snapshot["packet"],
+                f"{case.id} generated Packet v3",
+            )
+            if config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+            else core.fixture_snapshot_file(
+                fixture_snapshot,
+                VARIANTS["packet"],
+            ).data
+        )
         capsule_bytes = artifacts["capsule"].encode("utf-8")
         for variant in config.variants:
             if variant == "capsule":
@@ -1900,6 +2166,226 @@ def _validated_capsule_snapshot(
         return artifacts
     except (KeyError, OSError, RuntimeError, TypeError, UnicodeError, ValueError):
         return None
+
+
+def lifecycle_authoring_is_credible(
+    document: dict[str, Any],
+    corpus: list[core.BenchmarkCase],
+) -> bool:
+    """Bind generated Packet bytes and all authoring usage to the clean run."""
+
+    authoring = document.get("authoring")
+    snapshots = document.get("fixture_snapshot")
+    if (
+        not isinstance(authoring, dict)
+        or not isinstance(snapshots, dict)
+        or set(document) != {
+            "schema_version",
+            "kind",
+            "run_id",
+            "created_at",
+            "provider",
+            "model",
+            "reasoning_effort",
+            "timeout_seconds",
+            "repetitions",
+            "seed",
+            "telemetry_attestation",
+            "cases",
+            "full_corpus",
+            "comparison",
+            "variants",
+            "fixture_snapshot",
+            "environment",
+            "oracle_exposure",
+            "static",
+            "results",
+            "execution_profile",
+            "code_revision",
+            "claim_protocol",
+            "protocol",
+            "protocol_sha256",
+            "baseline_authoring",
+            "authoring",
+            "packet_version",
+            "capsule_version",
+            "lifecycle_version",
+        }
+        or set(authoring) != {
+            "schema_version",
+            "kind",
+            "run_id",
+            "created_at",
+            "provider",
+            "model",
+            "reasoning_effort",
+            "timeout_seconds",
+            "token_encoding",
+            "max_attempts",
+            "cases",
+            "case_suite",
+            "full_corpus",
+            "environment",
+            "skill_sha256",
+            "fixture_snapshot",
+            "results",
+            "code_revision",
+        }
+    ):
+        return False
+    try:
+        protocol, protocol_bytes = lifecycle_protocol()
+        recorded_protocol = core.attested_bytes(
+            document.get("protocol"),
+            "Capsule lifecycle preregistration",
+            max_bytes=64 * 1024,
+        )
+        if not lifecycle_benchmark.generation_report_is_credible(
+            authoring,
+            cases_dir=CASES_DIR,
+            skill_dir=SKILL_DIR,
+        ):
+            return False
+        generated = generated_packet_bytes(authoring, corpus)
+    except (OSError, RuntimeError, TypeError, UnicodeError, ValueError):
+        return False
+    authoring_environment = authoring.get("environment")
+    document_environment = document.get("environment")
+    if (
+        recorded_protocol != protocol_bytes
+        or document.get("protocol_sha256") != core.sha256_bytes(protocol_bytes)
+        or protocol.get("schema_version") != 1
+        or protocol.get("protocol_id") != LIFECYCLE_CLAIM_PROTOCOL
+        or protocol.get("comparison") != MARKDOWN_CAPSULE_LIFECYCLE_V1.name
+        or protocol.get("provider") != "codex"
+        or protocol.get("authoring_attempts_per_fixture") != 1
+        or protocol.get("baseline_authoring")
+        != "source-markdown-direct-zero-model-calls"
+        or protocol.get("candidate_authoring")
+        != "model-authored-packet-v3-then-deterministic-capsule-v6"
+        or protocol.get("corpus") != document.get("cases")
+        or protocol.get("provider") != document.get("provider")
+        or protocol.get("model") != document.get("model")
+        or protocol.get("reasoning_effort") != document.get("reasoning_effort")
+        or protocol.get("timeout_seconds") != document.get("timeout_seconds")
+        or protocol.get("implementation_repetitions")
+        != document.get("repetitions")
+        or protocol.get("seed") != document.get("seed")
+        or document.get("claim_protocol") != LIFECYCLE_CLAIM_PROTOCOL
+        or document.get("baseline_authoring")
+        != "source-markdown-direct-zero-model-calls"
+        or authoring.get("kind") != "semantic-spec-generation"
+        or authoring.get("provider") != document.get("provider")
+        or authoring.get("model") != document.get("model")
+        or authoring.get("reasoning_effort") != document.get("reasoning_effort")
+        or authoring.get("timeout_seconds") != document.get("timeout_seconds")
+        or authoring.get("max_attempts") != 1
+        or authoring.get("token_encoding") is not None
+        or authoring.get("full_corpus") is not True
+        or authoring.get("cases") != document.get("cases")
+        or authoring.get("code_revision") != document.get("code_revision")
+        or not isinstance(authoring_environment, dict)
+        or not isinstance(document_environment, dict)
+        or set(authoring_environment) != {"platform", "python", "codex", "git_commit"}
+        or set(document_environment) != {"python", "codex", "git_commit"}
+        or authoring_environment.get("git_commit")
+        != document_environment.get("git_commit")
+    ):
+        return False
+    by_case = {result["case"]: result for result in authoring["results"]}
+    for case in corpus:
+        try:
+            packet = core.attested_bytes(
+                snapshots[case.id]["packet"],
+                f"{case.id} lifecycle Packet v3",
+            )
+            result = by_case[case.id]
+            attempt = result["attempts"][0]
+            if (
+                set(result) != {
+                    "case",
+                    "artifact",
+                    "selected_attempt",
+                    "attempts",
+                    "specification",
+                    "source",
+                    "semantic",
+                    "compression",
+                    "provenance",
+                    "provider",
+                    "error",
+                }
+                or set(attempt) != {
+                    "attempt",
+                    "artifact",
+                    "specification",
+                    "semantic",
+                    "conversion_check",
+                    "provenance",
+                    "provider",
+                    "error",
+                }
+                or set(result["provenance"]) != {
+                    "source_sha256",
+                    "spec_sha256",
+                    "prompt_sha256",
+                    "starter_sha256",
+                    "fixture_sha256",
+                    "skill_sha256",
+                }
+                or set(attempt["provenance"]) != set(result["provenance"])
+                or core.redact_provider_telemetry(result["provider"])
+                != result["provider"]
+                or core.redact_provider_telemetry(attempt["provider"])
+                != attempt["provider"]
+            ):
+                return False
+            expected_provider = core.redact_provider_telemetry(
+                lifecycle_benchmark.aggregate_attempt_providers(
+                    result["attempts"],
+                    1,
+                )
+            )
+            expected_prompt_sha256 = core.sha256_bytes(
+                lifecycle_benchmark.generation_prompt(case, None).encode("utf-8")
+            )
+            source_metrics = result["source"]
+            semantic_metrics = result["semantic"]
+            expected_conversion = {
+                "encoding": None,
+                "source": {
+                    "bytes": source_metrics["bytes"],
+                    "words": source_metrics["words"],
+                },
+                "output": {
+                    "bytes": semantic_metrics["bytes"],
+                    "words": semantic_metrics["words"],
+                },
+                "smaller_bytes": semantic_metrics["bytes"] < source_metrics["bytes"],
+                "smaller_words": semantic_metrics["words"] < source_metrics["words"],
+            }
+            expected_compression = {
+                "bytes_percent": core.compression_percent(
+                    source_metrics["bytes"], semantic_metrics["bytes"]
+                ),
+                "words_percent": core.compression_percent(
+                    source_metrics["words"], semantic_metrics["words"]
+                ),
+            }
+            if (
+                generated[case.id] != packet
+                or result.get("provider") != expected_provider
+                or result.get("compression") != expected_compression
+                or attempt.get("conversion_check") != expected_conversion
+                or result["provenance"].get("prompt_sha256")
+                != expected_prompt_sha256
+                or attempt["provenance"].get("prompt_sha256")
+                != expected_prompt_sha256
+            ):
+                return False
+        except (KeyError, TypeError, UnicodeError, ValueError):
+            return False
+    return True
 
 
 def report_run_is_credible(
@@ -1990,6 +2476,10 @@ def report_run_is_credible(
         or snapshots != current_snapshots
         or document.get("static") != current_static
         or not results
+        or (
+            config == MARKDOWN_CAPSULE_LIFECYCLE_V1
+            and not lifecycle_authoring_is_credible(document, corpus)
+        )
         or (
             is_capsule_comparison(config)
             and (
@@ -2611,6 +3101,207 @@ def capsule_action_gate_coverage(
     return passed, total
 
 
+LIFECYCLE_REPORT_METRICS = (
+    ("Total model tokens", "combined_tokens"),
+    ("Input tokens", "input_tokens"),
+    ("Uncached input", "uncached_input_tokens"),
+    ("Output tokens", "output_tokens"),
+    ("Agent wall time", "duration_seconds"),
+    ("Tool calls", "tool_calls"),
+    ("Shell commands", "command_executions"),
+)
+
+
+def lifecycle_authoring_by_case(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    authoring = document.get("authoring")
+    results = authoring.get("results") if isinstance(authoring, dict) else None
+    if not isinstance(results, list) or any(not isinstance(item, dict) for item in results):
+        return {}
+    indexed = {item.get("case"): item for item in results}
+    if len(indexed) != len(results) or any(not isinstance(case, str) for case in indexed):
+        return {}
+    return indexed
+
+
+def lifecycle_authoring_metric(
+    document: dict[str, Any],
+    case: str,
+    name: str,
+) -> float | int | None:
+    result = lifecycle_authoring_by_case(document).get(case)
+    return metric(result, name) if result is not None else None
+
+
+def lifecycle_authoring_total(document: dict[str, Any], name: str) -> float | None:
+    indexed = lifecycle_authoring_by_case(document)
+    cases = document.get("cases")
+    if not isinstance(cases, list) or set(indexed) != set(cases):
+        return None
+    values = [lifecycle_authoring_metric(document, case, name) for case in cases]
+    if any(value is None for value in values):
+        return None
+    return round(sum(float(value) for value in values if value is not None), 3)
+
+
+def lifecycle_comparison(document: dict[str, Any], name: str) -> dict[str, Any]:
+    """Compare one-use workflows, charging full authoring cost to Capsule."""
+
+    config = document_comparison(document)
+    pairs = paired_result_index(document.get("results", []))
+    if config != MARKDOWN_CAPSULE_LIFECYCLE_V1 or pairs is None:
+        return empty_comparison()
+    by_case: dict[str, list[float]] = {}
+    reductions: list[float] = []
+    baseline_total = candidate_total = 0.0
+    for (case, _), pair in pairs.items():
+        baseline = pair.get(config.primary_baseline)
+        candidate = pair.get(config.primary_candidate)
+        authoring = lifecycle_authoring_metric(document, case, name)
+        if baseline is None or candidate is None or authoring is None:
+            continue
+        left = metric(baseline, name)
+        implementation = metric(candidate, name)
+        if not left or implementation is None:
+            continue
+        right = float(authoring) + float(implementation)
+        reduction = (float(left) - right) / float(left) * 100
+        reductions.append(reduction)
+        baseline_total += float(left)
+        candidate_total += right
+        by_case.setdefault(case, []).append(reduction)
+    fixture_medians = {
+        case: float(statistics.median(values)) for case, values in by_case.items()
+    }
+    confidence_interval = None
+    if fixture_medians:
+        population = list(fixture_medians.values())
+        randomizer = random.Random(20260901)
+        samples = sorted(
+            statistics.median(randomizer.choices(population, k=len(population)))
+            for _ in range(10_000)
+        )
+        confidence_interval = [round(samples[249], 3), round(samples[9749], 3)]
+    return {
+        "pairs": len(reductions),
+        "wins": sum(value > 0 for value in reductions),
+        "ties": sum(value == 0 for value in reductions),
+        "losses": sum(value < 0 for value in reductions),
+        "baseline_total": round(baseline_total, 3),
+        "candidate_total": round(candidate_total, 3),
+        "median_reduction_percent": core.median(reductions),
+        "fixture_medians": {
+            case: round(value, 3) for case, value in sorted(fixture_medians.items())
+        },
+        "fixture_cluster_bootstrap_95_ci": confidence_interval,
+    }
+
+
+def lifecycle_quality_dominates_every_pair(
+    document: dict[str, Any],
+) -> bool:
+    config = document_comparison(document)
+    pairs = paired_result_index(document.get("results", []))
+    if config != MARKDOWN_CAPSULE_LIFECYCLE_V1 or pairs is None:
+        return False
+    cases = document.get("cases")
+    repetitions = document.get("repetitions")
+    if (
+        not isinstance(cases, list)
+        or not isinstance(repetitions, int)
+        or isinstance(repetitions, bool)
+        or repetitions < 1
+    ):
+        return False
+    expected = len(cases) * repetitions
+    if len(pairs) != expected:
+        return False
+    for pair in pairs.values():
+        baseline = pair.get(config.primary_baseline, {}).get("grade")
+        candidate = pair.get(config.primary_candidate, {}).get("grade")
+        if not isinstance(baseline, dict) or not isinstance(candidate, dict):
+            return False
+        if (
+            candidate.get("task_success") is not True
+            or candidate.get("passed") != candidate.get("total")
+            or candidate.get("acceptance_passed") != candidate.get("acceptance_total")
+            or candidate.get("passed", -1) < baseline.get("passed", 0)
+            or candidate.get("acceptance_passed", -1)
+            < baseline.get("acceptance_passed", 0)
+        ):
+            return False
+    return True
+
+
+def lifecycle_claim_limitations(
+    document: dict[str, Any],
+    results: list[dict[str, Any]],
+    credible: bool,
+    config: ComparisonConfig,
+) -> list[str]:
+    limitations: list[str] = []
+    cases = document.get("cases")
+    repetitions = document.get("repetitions")
+    expected_pairs = (
+        len(cases) * repetitions
+        if isinstance(cases, list)
+        and isinstance(repetitions, int)
+        and not isinstance(repetitions, bool)
+        and repetitions >= 1
+        else 0
+    )
+    primary = lifecycle_comparison(document, "combined_tokens")
+    if not credible:
+        limitations.append("the full authoring and implementation provenance is not credible")
+    if not lifecycle_quality_dominates_every_pair(document):
+        limitations.append("Capsule v6 did not pass every test without losing pairwise quality")
+    if primary["pairs"] != expected_pairs:
+        limitations.append(
+            f"only {primary['pairs']}/{expected_pairs} lifecycle pairs had complete token telemetry"
+        )
+    elif primary["wins"] != expected_pairs:
+        limitations.append(
+            f"Capsule v6 used fewer one-use lifecycle tokens in only "
+            f"{primary['wins']}/{expected_pairs} pairs"
+        )
+    interval = primary["fixture_cluster_bootstrap_95_ci"]
+    if not interval or interval[0] <= 0:
+        limitations.append("the one-use lifecycle token 95% fixture CI is not above 0%")
+    authoring_tokens = lifecycle_authoring_total(document, "combined_tokens")
+    if authoring_tokens is None or authoring_tokens <= 0:
+        limitations.append("Capsule authoring token cost is missing")
+    aggregates = {variant: aggregate(results, variant) for variant in config.variants}
+    candidate_measured = aggregates[config.primary_candidate]["total_combined_tokens"]
+    if authoring_tokens is not None:
+        candidate_measured += authoring_tokens
+    baseline_measured = aggregates[config.primary_baseline]["total_combined_tokens"]
+    if candidate_measured >= baseline_measured:
+        limitations.append("Capsule did not reduce measured three-use lifecycle tokens")
+    action_passed, action_total = capsule_action_gate_coverage(results, config)
+    if action_total != expected_pairs or action_passed != action_total:
+        limitations.append(
+            f"the routed action gate passed only {action_passed}/{action_total} Capsule runs"
+        )
+    if provider_error_count(results):
+        limitations.append("implementation provider errors occurred")
+    if verification_error_count(results):
+        limitations.append("implementation verification errors occurred")
+    if any(result.get("error") is not None for result in results):
+        limitations.append("recorded implementation errors occurred")
+    successful, discovery, reads, verification = capsule_pre_edit_failures(results, config)
+    if discovery or reads or verification:
+        limitations.append(
+            "Capsule violated its zero-command pre-edit gate "
+            f"({discovery}/{successful} discovery, {reads}/{successful} reads, "
+            f"{verification}/{successful} verification)"
+        )
+    successful, telemetry_failures = capsule_pre_edit_telemetry_failures(results, config)
+    if telemetry_failures:
+        limitations.append(
+            f"Capsule lacked routed-edit telemetry in {telemetry_failures}/{successful} successful runs"
+        )
+    return limitations
+
+
 def input_cache_price_advantage_range(
     aggregates: dict[str, dict[str, Any]],
     config: ComparisonConfig,
@@ -2663,6 +3354,9 @@ def capsule_claim_limitations(
     config: ComparisonConfig = MARKDOWN_CAPSULE_V6,
 ) -> list[str]:
     """Enumerate every failed measured-corpus claim predicate."""
+
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        return lifecycle_claim_limitations(document, results, credible, config)
 
     limitations: list[str] = []
     baseline_label = arm_label(config, config.primary_baseline)
@@ -2759,10 +3453,214 @@ def capsule_claim_limitations(
     return limitations
 
 
+def _lifecycle_value(name: str, value: float | int | None) -> str:
+    if value is None:
+        return "n/a"
+    if name == "duration_seconds":
+        return f"{float(value):.3f}s"
+    return str(int(value)) if float(value).is_integer() else f"{float(value):.3f}"
+
+
+def capsule_lifecycle_report(document: dict[str, Any]) -> str:
+    config = MARKDOWN_CAPSULE_LIFECYCLE_V1
+    results = document["results"]
+    aggregates = {variant: aggregate(results, variant) for variant in config.variants}
+    comparisons = {
+        name: lifecycle_comparison(document, name)
+        for _, name in LIFECYCLE_REPORT_METRICS
+    }
+    primary = comparisons["combined_tokens"]
+    credible = capsule_report_is_credible(document, results)
+    limitations = lifecycle_claim_limitations(document, results, credible, config)
+    repetitions = document["repetitions"]
+    expected_pairs = len(document["cases"]) * repetitions
+    authoring = document["authoring"]
+    authored = sum(
+        result.get("error") is None and result.get("selected_attempt") == 1
+        for result in authoring["results"]
+    )
+    action_passed, action_total = capsule_action_gate_coverage(results, config)
+    successful_pairs, _ = primary_success_coverage(document, results, config)
+    authoring_tokens = lifecycle_authoring_total(document, "combined_tokens") or 0
+    baseline_impl_tokens = aggregates["markdown"]["total_combined_tokens"]
+    capsule_impl_tokens = aggregates["capsule"]["total_combined_tokens"]
+    measured_capsule_tokens = capsule_impl_tokens + authoring_tokens
+    measured_reduction = (
+        core.compression_percent(
+            baseline_impl_tokens,
+            measured_capsule_tokens,
+        )
+        if baseline_impl_tokens
+        else None
+    )
+    baseline_per_corpus = baseline_impl_tokens / repetitions
+    capsule_per_corpus = capsule_impl_tokens / repetitions
+    break_even = lifecycle_benchmark.break_even_reuses(
+        authoring_tokens,
+        baseline_per_corpus,
+        capsule_per_corpus,
+    )
+    interval = primary["fixture_cluster_bootstrap_95_ci"]
+    interval_text = (
+        f"[{interval[0]:.3f}%, {interval[1]:.3f}%]" if interval else "n/a"
+    )
+    one_use_reduction = core.compression_percent(
+        primary["baseline_total"],
+        primary["candidate_total"],
+    )
+    one_use_text = f"{one_use_reduction:.2f}% fewer" if primary["pairs"] else "n/a"
+    median_text = (
+        f"{primary['median_reduction_percent']:.2f}%"
+        if primary["median_reduction_percent"] is not None
+        else "n/a"
+    )
+    reuse_word = "time" if repetitions == 1 else "times"
+    measured_text = (
+        f"{abs(measured_reduction):.2f}% "
+        f"{'fewer' if measured_reduction >= 0 else 'more'}"
+        if measured_reduction is not None
+        else "n/a"
+    )
+    break_even_text = (
+        "none"
+        if break_even is None
+        else f"{break_even} full-corpus "
+        f"{'use' if break_even == 1 else 'uses'}"
+    )
+    lines = [
+        "# Ordinary Markdown vs Capsule v6 Full-Lifecycle Benchmark",
+        "",
+        f"- Run: `{document['run_id']}`",
+        f"- Provider/model: `{document['provider']}` / `{document.get('model') or 'provider default'}`",
+        f"- Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`",
+        f"- Cases: {len(document['cases'])}",
+        f"- Implementation repetitions: {repetitions}",
+        "- Authoring attempts: exactly one per fixture",
+        f"- Claim protocol: `{document.get('claim_protocol', 'missing')}`",
+        f"- Preregistration SHA-256: `{document.get('protocol_sha256', 'missing')}`",
+        "- Markdown baseline: source task used directly, with zero preparation model calls",
+        "- Capsule workflow: source task -> skill authoring call -> deterministic sealed context -> implementation",
+        "",
+    ]
+    if limitations:
+        lines.extend([
+            "> Non-publishable run. The preregistered full-lifecycle dominance gate did not pass.",
+            "",
+        ])
+    lines.extend([
+        "## Quality",
+        "",
+        f"Authored and compiled Capsule handoffs: **{authored}/{len(authoring['results'])}**.  ",
+        f"Capsule routed action gate: **{action_passed}/{action_total}**.",
+        "",
+        "| Workflow | Successful implementations | Tests | Acceptance |",
+        "|---|---:|---:|---:|",
+    ])
+    for variant in config.variants:
+        item = aggregates[variant]
+        lines.append(
+            f"| {arm_label(config, variant)} | "
+            f"{round(item['task_success_rate'] * item['runs'])}/{item['runs']} | "
+            f"{item['test_pass_rate'] * 100:.2f}% | "
+            f"{item['acceptance_pass_rate'] * 100:.2f}% |"
+        )
+    lines.extend([
+        "",
+        "## Token bill",
+        "",
+        "Authoring is charged only to Capsule. Markdown receives the complete source task directly, which favors the baseline.",
+        "",
+        "| Stage | Ordinary Markdown | Capsule v6 | Capsule delta |",
+        "|---|---:|---:|---:|",
+        f"| Authoring ({len(document['cases'])} artifacts) | 0 | {int(authoring_tokens)} | n/a |",
+        f"| Implementation ({expected_pairs} runs/arm) | {int(baseline_impl_tokens)} | {int(capsule_impl_tokens)} | {percent_delta(baseline_impl_tokens, capsule_impl_tokens)} |",
+        f"| Measured workload: each artifact reused {repetitions} {reuse_word} | {int(baseline_impl_tokens)} | {int(measured_capsule_tokens)} | {percent_delta(baseline_impl_tokens, measured_capsule_tokens)} |",
+        "",
+        "## One-use lifecycle",
+        "",
+        "Every Capsule pair below includes the full authoring cost for that fixture plus one implementation. Failed Markdown implementations remain in this primary comparison.",
+        "",
+        "| Metric | Markdown average/task | Capsule average/task | Capsule reduction | Pair wins | 95% fixture CI |",
+        "|---|---:|---:|---:|---:|---:|",
+    ])
+    for label, name in LIFECYCLE_REPORT_METRICS:
+        summary = comparisons[name]
+        pairs = summary["pairs"]
+        left = summary["baseline_total"] / pairs if pairs else None
+        right = summary["candidate_total"] / pairs if pairs else None
+        ci = summary["fixture_cluster_bootstrap_95_ci"]
+        ci_text = f"[{ci[0]:.3f}%, {ci[1]:.3f}%]" if ci else "n/a"
+        reduction = (
+            f"{core.compression_percent(summary['baseline_total'], summary['candidate_total']):.2f}%"
+            if pairs else "n/a"
+        )
+        lines.append(
+            f"| {label} | {_lifecycle_value(name, left)} | "
+            f"{_lifecycle_value(name, right)} | {reduction} | "
+            f"{summary['wins']}/{pairs} | {ci_text} |"
+        )
+    lines.extend([
+        "",
+        f"One-use total-token result: **{one_use_text}** tokens; "
+        f"median reduction **{median_text}**; "
+        f"fixture-cluster 95% CI **{interval_text}**.",
+        "",
+        f"Strict equal-success coverage: **{successful_pairs}/{expected_pairs}** pairs. "
+        "This is secondary; the primary outcome comparison retains failed baseline attempts.",
+        "",
+        "## Reuse",
+        "",
+        "| Full-corpus uses | Markdown tokens | Capsule tokens including authoring | Capsule delta |",
+        "|---:|---:|---:|---:|",
+    ])
+    for reuses in (1, 3, 5, 10):
+        baseline_total = baseline_per_corpus * reuses
+        capsule_total = authoring_tokens + capsule_per_corpus * reuses
+        lines.append(
+            f"| {reuses} | {int(round(baseline_total))} | "
+            f"{int(round(capsule_total))} | {percent_delta(baseline_total, capsule_total)} |"
+        )
+    lines.extend([
+        "",
+        f"Measured {repetitions}-use workload: **{measured_text}** total model tokens. "
+        f"Break-even: **{break_even_text}**.",
+        "",
+        "## Static size",
+        "",
+        render_static(document["static"], config).rstrip(),
+        "",
+        "## Verdict",
+        "",
+    ])
+    if limitations:
+        lines.append("Claim rejected: " + "; ".join(limitations) + ".")
+    else:
+        lines.append(
+            "The preregistered gate passed: Capsule v6 completed every implementation, "
+            "never lost pairwise quality, and used fewer total one-use lifecycle tokens "
+            "in every pair after paying its complete measured authoring bill."
+        )
+    lines.extend([
+        "",
+        "## Limits",
+        "",
+        "- Three synthetic multi-file Python fixtures can validate this workflow, not establish a universal model-independent claim.",
+        f"- There is one authoring observation per fixture; implementation is repeated {repetitions} {reuse_word} per arm.",
+        "- Provider token and agent-duration telemetry are self-reported. Deterministic Capsule compilation uses no model tokens and is excluded from agent wall time.",
+        "- Capsule static bytes can exceed Markdown because it embeds routed source. This benchmark tests total task execution, not file compression.",
+        "- Hidden tests remain outside authoring and implementation workspaces. Visible checks are restored from immutable fixtures.",
+        "- Results apply only to the recorded model, reasoning effort, fixtures, and cache behavior.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def capsule_v6_report(document: dict[str, Any]) -> str:
     config = document_comparison(document)
     if not is_capsule_comparison(config):
         raise ValueError(f"result is not a Capsule v6 comparison: {config.name}")
+    if config == MARKDOWN_CAPSULE_LIFECYCLE_V1:
+        return capsule_lifecycle_report(document)
     baseline_label = arm_label(config, config.primary_baseline)
     candidate_label = arm_label(config, config.primary_candidate)
     candidate_delta_label = (
@@ -3012,7 +3910,7 @@ def validate_capsule_release(
     except ValueError:
         config = None
     if (
-        config != MARKDOWN_CAPSULE_V6
+        config != MARKDOWN_CAPSULE_LIFECYCLE_V1
         or not isinstance(results, list)
         or not capsule_report_is_credible(document, results)
     ):

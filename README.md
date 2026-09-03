@@ -104,47 +104,41 @@ confidence interval crossed zero.
 
 ### Context capsule benchmark
 
-Capsule v6 embeds a validated Packet v3 and its exact routed source snapshot.
-Its sealed control identifies source frames as current pre-edit data, rejects a
-no-edit outcome, and requires every routed edit in one bundled file-change
-operation before any repository read or command. The exact declared verification
-then runs alone exactly once; any additional tool call fails the action gate. The
-mandatory `do` list is repeated beside each source frame so the model does not
-have to cross-reference a global route while constructing the one-shot patch. A
-sealed next-action record after the final source frame repeats only the mutation
-paths and required first `file_change`; it deliberately omits `V1` so the tail
-cannot prime an early command. The leading control owns the full
-`file_change -> V1 -> final answer` sequence. Provider prompts use the
-`capsule-v6-next-action-1` profile: no conflicting generic syntax check and no
-competing instruction after the artifact. The public two-arm harness compares
-Capsule v6 directly with an ordinary Markdown task description. It securely
-compares every routed post-state with the captured starter and fails no-edit,
-partial edit, split-edit, pre-edit command, substituted verification, or
-multi-attempt outcomes. It reports behavior, provider telemetry, and
-byte-auditable static overhead.
+Capsule v6 turns a task into a sealed, repository-bound execution context. It
+contains the exact source that must change, a bounded edit route, and one exact
+verification command. The execution contract requires one bundled edit before
+any command, then that verification exactly once. No edit, partial edits,
+exploration before editing, extra commands, or multiple attempts fail the gate.
 
-Each paired run starts from the same captured repository. The Markdown arm gets
-the existing `baseline.md` through the generic implementation prompt; it gets no
-embedded source, route, or Capsule action gate. The Capsule arm gets the sealed
-handoff. This measures execution after both documents already exist. It does not
-include one-time Capsule authoring cost, and it never pools measurements from the
-older Packet benchmark.
+The public benchmark compares two complete workflows from the same source task:
 
-Direct Markdown/Capsule numbers are published only after the result and exact
-rendered report pass an isolated release credibility validator. That gate runs
-with Python `-I` from the launcher's exact `HEAD` Git blob, then attests the live
-launcher and harness blobs. It permits only the root report, two README claim
-files, and one non-executable published directory containing `capsule-r3.json` plus a
-byte-identical `CAPSULE.md` after the clean run commit. Attested validators
-execute from verified Git-blob bytes, not live paths, and the empty code stage
-rejects stdlib import shadows before other Python checks run. Release
-validation is non-executing: fixture behavior is
-tested during the benchmark run, while publication replays only structural,
-snapshot, provenance, privacy, and rendering checks. Those checks use a private
-fixture tree materialized from the attested Git commit, never live fixture
-paths. Repository code/config changes, import shadows, bytecode caches,
-additional result directories, symlinks, renames, copies, deletions, and mode
-or type changes fail closed.
+- **Ordinary Markdown:** use the complete `baseline.md` directly, with zero
+  preparation model calls, then implement it.
+- **Capsule v6:** use the published skill to author the repository handoff,
+  compile its routed source deterministically, then implement the Capsule.
+
+Every authoring input and output token is charged to Capsule. The report shows a
+one-use result, where the full authoring bill is charged to every task, and the
+measured three-use result, where one authored handoff is reused three times.
+Giving Markdown a complete task for free deliberately biases the comparison
+against Capsule. No result from the older Packet-only experiment is pooled into
+this comparison.
+
+The protocol is fixed before the real run in
+[`benchmarks/capsule-lifecycle-v1.prereg.json`](benchmarks/capsule-lifecycle-v1.prereg.json).
+Publication requires Capsule to pass every hidden test and action gate, preserve
+or improve quality in every pair, use fewer one-use total model tokens in every
+pair, produce a positive fixture-cluster confidence interval, reduce the actual
+three-use token bill, and finish without provider, verification, provenance, or
+privacy errors. Failed Markdown quality remains in the primary token comparison;
+it is not filtered out after the run.
+
+Numbers are published only when the exact result and rendered report pass the
+isolated release validator. It executes attested harness and skill bytes from the
+recorded Git commit, reconstructs private fixtures from that commit, and accepts
+only one privacy-redacted result plus its byte-identical report. Repository code
+changes, import shadows, bytecode caches, extra artifacts, symlinks, renames,
+copies, deletions, or mode changes fail closed.
 
 Artifacts generated by the current harness are privacy-redacted by default.
 The earlier generated and Packet result directories linked below are historical

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "protocol_id": "markdown-capsule-full-lifecycle-dominance-v1",
+  "comparison": "markdown-capsule-lifecycle-v1",
+  "corpus": [
+    "refund-ledger",
+    "tenant-settings",
+    "webhook-dispatch"
+  ],
+  "provider": "codex",
+  "model": "gpt-5.6-terra",
+  "reasoning_effort": "medium",
+  "timeout_seconds": 600,
+  "implementation_repetitions": 3,
+  "seed": 20260901,
+  "authoring_attempts_per_fixture": 1,
+  "baseline_authoring": "source-markdown-direct-zero-model-calls",
+  "candidate_authoring": "model-authored-packet-v3-then-deterministic-capsule-v6",
+  "primary_metric": "authoring_input_tokens + authoring_output_tokens + implementation_input_tokens + implementation_output_tokens",
+  "primary_population": "all complete paired attempts including quality failures",
+  "bootstrap": {
+    "unit": "fixture_median",
+    "iterations": 10000,
+    "seed": 20260901,
+    "confidence": 0.95
+  },
+  "release_gate": [
+    "full corpus and exact paired schedule",
+    "one successful authoring attempt per fixture with complete token telemetry",
+    "Capsule succeeds with every hidden test and acceptance check in every pair",
+    "Capsule quality is componentwise no worse in every pair",
+    "Capsule action gate passes in every implementation",
+    "Capsule one-use lifecycle total tokens are lower in every pair",
+    "fixture-cluster bootstrap confidence interval lower bound is greater than zero",
+    "measured three-use Capsule lifecycle total tokens are lower",
+    "no provider, verification, provenance, privacy, or recorded run errors"
+  ],
+  "retry_policy": "no rerun or threshold change after observing outcomes"
+}

@@ -158,6 +158,7 @@ class GenerationRunDocument(dict[str, Any]):
 def generation_document(
     args: argparse.Namespace,
     cases: list[core.BenchmarkCase],
+    code_revision: dict[str, Any] | None = None,
 ) -> GenerationRunDocument:
     cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
     corpus = core.discover_cases(cases_dir=cases_dir)
@@ -175,7 +176,7 @@ def generation_document(
             fixture_snapshot=fixture,
             starter_snapshot=starter,
         )
-    return GenerationRunDocument({
+    document = GenerationRunDocument({
         "schema_version": 2,
         "kind": "semantic-spec-generation",
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -183,6 +184,7 @@ def generation_document(
         "provider": args.provider,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "timeout_seconds": getattr(args, "timeout_seconds", 600),
         "token_encoding": args.token_encoding,
         "max_attempts": args.max_attempts,
         "cases": [case.id for case in cases],
@@ -192,12 +194,19 @@ def generation_document(
             "platform": platform.platform(),
             "python": platform.python_version(),
             "codex": core.command_version(["codex", "--version"]),
-            "git_commit": core.git_commit(),
+            "git_commit": (
+                code_revision.get("commit")
+                if isinstance(code_revision, dict)
+                else core.git_commit()
+            ),
         },
         "skill_sha256": skill_snapshot.sha256,
         "fixture_snapshot": snapshots,
         "results": [],
     }, fixture_snapshots, starter_snapshots, skill_snapshot)
+    if code_revision is not None:
+        document["code_revision"] = code_revision
+    return document
 
 
 def failed_provider(message: str, duration: float | int | None = None) -> dict[str, Any]:
@@ -369,7 +378,10 @@ def read_generation_artifact(path: Path, workspace: Path) -> str:
         raise RuntimeError("provider artifact is not valid UTF-8") from exc
 
 
-def generate(args: argparse.Namespace) -> Path:
+def generate(
+    args: argparse.Namespace,
+    code_revision: dict[str, Any] | None = None,
+) -> Path:
     if args.max_attempts < 1:
         raise ValueError("max attempts must be at least 1")
     cases_dir = (args.cases_dir or core.CASES_DIR).resolve()
@@ -384,7 +396,17 @@ def generate(args: argparse.Namespace) -> Path:
     attempt_artifacts = output / "attempts"
     attempt_artifacts.mkdir()
     result_path = core.lexical_output_path(output / "generation.json")
-    document = generation_document(args, cases)
+    document = generation_document(args, cases, code_revision)
+
+    def require_code_revision() -> None:
+        if code_revision is None:
+            return
+        required = code_revision.get("required_paths")
+        if not isinstance(required, dict):
+            raise RuntimeError("generation code attestation lacks required paths")
+        core.require_git_worktree_revision(code_revision, tuple(sorted(required)))
+
+    require_code_revision()
 
     with (
         tempfile.TemporaryDirectory(prefix="semantic-spec-generate-") as temporary,
@@ -392,6 +414,7 @@ def generate(args: argparse.Namespace) -> Path:
     ):
         temporary_root = Path(temporary)
         for index, case in enumerate(cases, start=1):
+            require_code_revision()
             expected_snapshot = document["fixture_snapshot"][case.id]
             require_generation_snapshot(
                 case, expected_snapshot, document["skill_sha256"]
@@ -540,6 +563,7 @@ def generate(args: argparse.Namespace) -> Path:
                 require_generation_snapshot(
                     case, expected_snapshot, document["skill_sha256"]
                 )
+                require_code_revision()
                 provider = core.redact_provider_telemetry(provider)
 
                 attempt_artifact = None
@@ -623,6 +647,8 @@ def generate(args: argparse.Namespace) -> Path:
             }
             document["results"].append(result)
             checkpoint.write_json(document)
+            require_code_revision()
+    require_code_revision()
     return output
 
 
@@ -813,21 +839,36 @@ def is_historical_lifecycle_pair(
     )
 
 
-def generation_report_is_credible(generation: dict[str, Any]) -> bool:
+def generation_report_is_credible(
+    generation: dict[str, Any],
+    *,
+    cases_dir: Path | None = None,
+    skill_dir: Path | None = None,
+) -> bool:
     cases = generation.get("cases")
     snapshots = generation.get("fixture_snapshot")
     results = generation.get("results")
     try:
-        corpus = core.recorded_case_corpus(generation)
+        corpus = (
+            core.discover_cases(cases_dir=cases_dir)
+            if cases_dir is not None
+            else core.recorded_case_corpus(generation)
+        )
         current_snapshots = {
             case.id: generation_case_snapshot(case) for case in corpus
         }
-        current_skill_hash = core.snapshot_fixture_tree(SKILL_DIR).sha256
+        current_skill_hash = core.snapshot_fixture_tree(
+            skill_dir or SKILL_DIR
+        ).sha256
     except (OSError, RuntimeError, ValueError):
         return False
     corpus_ids = {case.id for case in corpus}
     if (
         generation.get("schema_version") != 2
+        or (
+            cases_dir is not None
+            and generation.get("case_suite") != cases_dir.name
+        )
         or not isinstance(cases, list)
         or not cases
         or any(not isinstance(case, str) for case in cases)
