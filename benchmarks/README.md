@@ -1,7 +1,9 @@
 # Benchmark
 
-This benchmark compares a conventional Markdown specification with an equivalent
-Semantic Spec Writer `.spec.ctx` document.
+The primary public benchmark compares ordinary Markdown with the complete
+Semantic Spec Writer workflow. Markdown receives the complete source task with
+zero preparation calls. The skill arm pays every authoring input/output token,
+deterministic context compilation, and every implementation input/output token.
 
 It measures four different things:
 
@@ -13,14 +15,15 @@ It measures four different things:
 4. **Lifecycle cost**: semantic-spec authoring tokens plus repeated implementation
    tokens and measured break-even reuse.
 
-An additional execution-packet experiment uses three arms on multi-file cases:
+Historical component tracks also measure already-authored semantic documents
+and an internal three-arm routing experiment:
 
 1. conventional Markdown;
 2. Semantic v1 with a compact edit scope;
 3. compiled Packet v3 with file-owned `do` actions, source anchors, a stale-route hash, and bounded execution.
 
-Packet v3 versus Semantic v1 is the primary comparison. Markdown is secondary;
-otherwise ordinary semantic compression could be mistaken for a packet benefit.
+Those component tracks remain useful for regression diagnosis. They are not the
+public full-workflow claim and are never pooled into it.
 
 Static compression alone is not evidence that a specification is useful. The
 implementation track checks whether an agent can still produce behavior that
@@ -297,6 +300,14 @@ and no-rerun rule are committed in
 [`capsule-lifecycle-v2.prereg.json`](capsule-lifecycle-v2.prereg.json). The real
 run command refuses any mismatch. Do not rerun or weaken a threshold after
 observing an unfavorable result.
+
+The only real v2 run failed the publication gate. Capsule implementation used
+48.32% fewer tokens, but five charged authoring calls raised the measured
+three-use lifecycle total from 1,222,545 Markdown tokens to 2,085,991 Capsule
+tokens (+70.63%). It won 0/9 one-use token pairs, completed only 6/9 routed
+action gates, and did not improve task success (6/9 for both arms). It was not
+rerun or installed under `results/published`; see [`FAILED_RUNS.md`](FAILED_RUNS.md)
+and the privacy-redacted [failed report](results/failed/gpt-5.6-terra-medium-20260903-markdown-capsule-lifecycle-v2/CAPSULE.md).
 
 Stop if the report says `Non-publishable run`. For a passing run only, publish
 the exact result and report bytes:

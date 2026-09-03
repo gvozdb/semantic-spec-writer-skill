@@ -2,5 +2,7 @@ benchmarks/results/*
 !benchmarks/results/.gitkeep
 !benchmarks/results/published/
 !benchmarks/results/published/**
+!benchmarks/results/failed/
+!benchmarks/results/failed/**
 __pycache__/
 *.pyc
