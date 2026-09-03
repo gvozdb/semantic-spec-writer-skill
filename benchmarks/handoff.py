@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Three-arm benchmark for repository-grounded execution packets."""
+"""Benchmark repository execution from Markdown, semantic packets, and Capsules."""
 
 from __future__ import annotations
 
@@ -98,7 +98,20 @@ CAPSULE_V6 = ComparisonConfig(
     "capsule",
     (("packet", "Packet v3"), ("capsule", "Capsule v6")),
 )
-COMPARISONS = {config.name: config for config in (PACKET_V3, CAPSULE_V6)}
+MARKDOWN_CAPSULE_V6 = ComparisonConfig(
+    "markdown-capsule-v6",
+    "markdown-context-capsule-comparison",
+    (("packet_version", 3), ("capsule_version", 6)),
+    ("markdown", "capsule"),
+    "markdown",
+    "capsule",
+    (("markdown", "Ordinary Markdown"), ("capsule", "Capsule v6")),
+)
+CAPSULE_COMPARISONS = (CAPSULE_V6, MARKDOWN_CAPSULE_V6)
+COMPARISONS = {
+    config.name: config
+    for config in (PACKET_V3, *CAPSULE_COMPARISONS)
+}
 ALL_VARIANTS = tuple((*VARIANTS, "capsule"))
 CAPSULE_ACTION_ERROR_CODES = frozenset({
     "capsule_declared_verification_count",
@@ -136,6 +149,18 @@ def arm_label(config: ComparisonConfig, variant: str) -> str:
         if name == variant:
             return label
     raise ValueError(f"{config.name}: unknown arm {variant!r}")
+
+
+def is_capsule_comparison(config: ComparisonConfig) -> bool:
+    return config in CAPSULE_COMPARISONS
+
+
+def capsule_schema_version(config: ComparisonConfig) -> int:
+    if config == CAPSULE_V6:
+        return 4
+    if config == MARKDOWN_CAPSULE_V6:
+        return 5
+    raise ValueError(f"{config.name}: not a Capsule comparison")
 
 
 def context_capsule_module() -> Any:
@@ -343,7 +368,7 @@ def validate_cases(
             except ValueError as exc:
                 errors.append(str(exc))
         errors.extend(validate_packet(case))
-        if config == CAPSULE_V6:
+        if is_capsule_comparison(config):
             errors.extend(validate_capsule(case))
     return errors
 
@@ -465,7 +490,7 @@ def execution_prompt(
     comparison: ComparisonConfig | str | None = None,
 ) -> str:
     config = comparison_config(comparison)
-    if config == CAPSULE_V6 and variant == config.primary_candidate:
+    if is_capsule_comparison(config) and variant == config.primary_candidate:
         capsule = context_capsule_module()
         return core.benchmark_prompt(
             specification,
@@ -520,7 +545,10 @@ def case_snapshot(
             },
         }
 
-    packet_bytes = captured_artifacts["packet"].encode("utf-8")
+    packet_bytes = core.fixture_snapshot_file(
+        fixture_snapshot,
+        VARIANTS["packet"],
+    ).data
     capsule_text, capsule_metadata = capsule_artifact(
         case,
         starter_snapshot=starter_snapshot,
@@ -549,32 +577,63 @@ def case_snapshot(
     }
 
 
-def capsule_snapshot_artifacts(snapshot: Any) -> dict[str, str]:
+def capsule_snapshot_artifacts(
+    snapshot: Any,
+    comparison: ComparisonConfig | str | None = MARKDOWN_CAPSULE_V6,
+) -> dict[str, str]:
+    config = comparison_config(comparison)
+    if not is_capsule_comparison(config):
+        raise ValueError(f"{config.name}: not a Capsule comparison")
     if not isinstance(snapshot, dict):
         raise ValueError("Capsule fixture snapshot must be an object")
     artifacts = snapshot.get("artifacts")
-    if not isinstance(artifacts, dict) or set(artifacts) != set(CAPSULE_V6.variants):
+    if not isinstance(artifacts, dict) or set(artifacts) != set(config.variants):
         raise ValueError("Capsule fixture snapshot lacks exact artifact bytes")
     return {
         variant: core.attested_text(
             artifacts[variant],
             f"{variant} handoff artifact",
         )
-        for variant in CAPSULE_V6.variants
+        for variant in config.variants
     }
+
+
+def capsule_packet_text(capsule_text: str) -> str:
+    """Return the Packet bound inside a validated captured Capsule artifact."""
+
+    try:
+        capsule = context_capsule_module()
+        header, _, embedded, _, _, _ = capsule._parse_capsule(
+            capsule_text.encode("utf-8")
+        )
+        return capsule._reconstructed_packet(
+            embedded.decode("utf-8"),
+            header["version"],
+        )
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        UnicodeError,
+        ValueError,
+    ) as exc:
+        raise ValueError("Capsule fixture snapshot has no valid Packet frame") from exc
 
 
 def capsule_static_rows_from_snapshots(
     cases: list[core.BenchmarkCase],
     snapshots: dict[str, dict[str, Any]],
+    comparison: ComparisonConfig | str | None = MARKDOWN_CAPSULE_V6,
 ) -> list[dict[str, Any]]:
+    config = comparison_config(comparison)
     return [
         {
             "case": case.id,
             "variants": {
                 variant: core.text_metrics(text)
                 for variant, text in capsule_snapshot_artifacts(
-                    snapshots[case.id]
+                    snapshots[case.id],
+                    config,
                 ).items()
             },
         }
@@ -606,7 +665,7 @@ def result_provenance(
         "starter_sha256": snapshot["starter_sha256"],
         "fixture_sha256": snapshot["fixture_sha256"],
     }
-    if config == CAPSULE_V6:
+    if is_capsule_comparison(config):
         capsule = snapshot.get("capsule")
         if not isinstance(capsule, dict):
             raise RuntimeError("Capsule v6 snapshot lacks capsule provenance")
@@ -718,8 +777,8 @@ def create_document(
         starter_snapshots[case.id] = starter
         grading_snapshots[case.id] = grading
         captured_artifacts[case.id] = (
-            capsule_snapshot_artifacts(snapshot)
-            if config == CAPSULE_V6
+            capsule_snapshot_artifacts(snapshot, config)
+            if is_capsule_comparison(config)
             else {
                 variant: core.fixture_snapshot_file(
                     fixture,
@@ -728,7 +787,7 @@ def create_document(
                 for variant in config.variants
             }
         )
-    if config == CAPSULE_V6 and code_revision is None:
+    if is_capsule_comparison(config) and code_revision is None:
         try:
             code_revision = core.git_revision_attestation(
                 CAPSULE_CODE_PATHS,
@@ -742,7 +801,9 @@ def create_document(
         else core.git_commit()
     )
     document = HandoffRunDocument({
-        "schema_version": 4 if config == CAPSULE_V6 else 1,
+        "schema_version": (
+            capsule_schema_version(config) if is_capsule_comparison(config) else 1
+        ),
         "kind": config.kind,
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "created_at": datetime.now(UTC).isoformat(),
@@ -768,13 +829,13 @@ def create_document(
             "across arms"
         ),
         "static": (
-            capsule_static_rows_from_snapshots(cases, snapshots)
-            if config == CAPSULE_V6
+            capsule_static_rows_from_snapshots(cases, snapshots, config)
+            if is_capsule_comparison(config)
             else static_rows_from_artifacts(cases, captured_artifacts, config)
         ),
         "results": [],
     }, starter_snapshots, grading_snapshots, captured_artifacts)
-    if config == CAPSULE_V6:
+    if is_capsule_comparison(config):
         document["execution_profile"] = (
             context_capsule_module().CAPSULE_EXECUTION_PROFILE
         )
@@ -823,7 +884,7 @@ def paired_job_schedule(
 def run(args: argparse.Namespace) -> Path:
     config = comparison_config(getattr(args, "comparison", None))
     code_revision = None
-    if config == CAPSULE_V6 and args.provider == "codex":
+    if is_capsule_comparison(config) and args.provider == "codex":
         code_revision = core.git_revision_attestation(
             CAPSULE_CODE_PATHS,
             require_clean=True,
@@ -879,13 +940,13 @@ def run(args: argparse.Namespace) -> Path:
                 starter_snapshot=document.starter_snapshots[case.id],
             )
             artifacts = (
-                capsule_snapshot_artifacts(expected_snapshot)
-                if config == CAPSULE_V6
+                capsule_snapshot_artifacts(expected_snapshot, config)
+                if is_capsule_comparison(config)
                 else document.artifacts[case.id]
             )
             specification = artifacts[variant]
             prompt = execution_prompt(specification, variant, config)
-            if config == CAPSULE_V6:
+            if is_capsule_comparison(config):
                 require_case_snapshot(case, expected_snapshot, config)
             print(
                 f"[{index}/{len(jobs)}] {case.id} {variant} repetition={repetition}",
@@ -909,13 +970,13 @@ def run(args: argparse.Namespace) -> Path:
                         args.reasoning_effort,
                         args.timeout_seconds,
                         substantive_edit_paths=(
-                            routed_edit_paths(artifacts["packet"])
-                            if config == CAPSULE_V6
+                            routed_edit_paths(capsule_packet_text(artifacts["capsule"]))
+                            if is_capsule_comparison(config)
                             else ()
                         ),
                         declared_verification_command=(
                             str(case.manifest["verification_command"])
-                            if config == CAPSULE_V6
+                            if is_capsule_comparison(config)
                             else None
                         ),
                     )
@@ -938,7 +999,7 @@ def run(args: argparse.Namespace) -> Path:
                     run_errors.append("provider_nonzero_exit")
                 if provider.get("event_errors"):
                     run_errors.append("provider_event_error")
-                if config == CAPSULE_V6 and variant == config.primary_candidate:
+                if is_capsule_comparison(config) and variant == config.primary_candidate:
                     enforce_action_telemetry = bool(
                         args.provider == "codex"
                         or "pre_edit_telemetry" in provider
@@ -947,7 +1008,7 @@ def run(args: argparse.Namespace) -> Path:
                     try:
                         required_edits, completed_edits = routed_edit_progress(
                             workspace,
-                            artifacts["packet"],
+                            capsule_packet_text(artifacts["capsule"]),
                             document.starter_snapshots[case.id],
                         )
                     except (OSError, RuntimeError, UnicodeError, ValueError):
@@ -1705,8 +1766,12 @@ def capsule_route_telemetry_matches_snapshot(
     if not isinstance(document, dict) or not isinstance(result, dict):
         return False
     try:
+        config = document_comparison(document)
+        if not is_capsule_comparison(config):
+            return False
         snapshot = document["fixture_snapshot"][result["case"]]
-        packet = capsule_snapshot_artifacts(snapshot)["packet"]
+        artifacts = capsule_snapshot_artifacts(snapshot, config)
+        packet = capsule_packet_text(artifacts["capsule"])
         expected_paths = routed_edit_paths(packet)
     except (KeyError, TypeError, ValueError):
         return False
@@ -1760,6 +1825,7 @@ def _validated_capsule_snapshot(
     snapshot: Any,
     fixture_snapshot: core.FixtureTreeSnapshot,
     starter_snapshot: core.FixtureTreeSnapshot,
+    config: ComparisonConfig,
 ) -> dict[str, str] | None:
     """Validate Capsule evidence while deriving every row from attested bytes."""
 
@@ -1775,14 +1841,20 @@ def _validated_capsule_snapshot(
     }:
         return None
     try:
-        artifacts = capsule_snapshot_artifacts(snapshot)
-        packet_bytes = artifacts["packet"].encode("utf-8")
-        capsule_bytes = artifacts["capsule"].encode("utf-8")
-        if packet_bytes != core.fixture_snapshot_file(
+        artifacts = capsule_snapshot_artifacts(snapshot, config)
+        packet_bytes = core.fixture_snapshot_file(
             fixture_snapshot,
             VARIANTS["packet"],
-        ).data:
-            return None
+        ).data
+        capsule_bytes = artifacts["capsule"].encode("utf-8")
+        for variant in config.variants:
+            if variant == "capsule":
+                continue
+            if artifacts[variant].encode("utf-8") != core.fixture_snapshot_file(
+                fixture_snapshot,
+                VARIANTS[variant],
+            ).data:
+                return None
         verification_hash = core.verification_fixture_sha256_from_snapshot(
             case,
             starter_snapshot,
@@ -1811,7 +1883,7 @@ def _validated_capsule_snapshot(
         }
         expected_prompts = {
             variant: core.sha256_bytes(
-                execution_prompt(text, variant, CAPSULE_V6).encode("utf-8")
+                execution_prompt(text, variant, config).encode("utf-8")
             )
             for variant, text in artifacts.items()
         }
@@ -1854,7 +1926,7 @@ def report_run_is_credible(
     artifacts_by_case: dict[str, dict[str, str]] = {}
     try:
         corpus = core.discover_cases(cases_dir=CASES_DIR)
-        if config == CAPSULE_V6:
+        if is_capsule_comparison(config):
             if not isinstance(snapshots, dict):
                 return False
             for case in corpus:
@@ -1865,12 +1937,17 @@ def report_run_is_credible(
                     snapshots.get(case.id),
                     fixture,
                     starter,
+                    config,
                 )
                 if artifacts is None:
                     return False
                 artifacts_by_case[case.id] = artifacts
             current_snapshots = snapshots
-            current_static = capsule_static_rows_from_snapshots(corpus, snapshots)
+            current_static = capsule_static_rows_from_snapshots(
+                corpus,
+                snapshots,
+                config,
+            )
         else:
             current_snapshots = {
                 case.id: case_snapshot(case, config) for case in corpus
@@ -1898,20 +1975,23 @@ def report_run_is_credible(
             and document.get("kind") != config.kind
         )
         or any(document.get(field) != version for field, version in config.versions)
-        or (config == CAPSULE_V6 and document.get("schema_version") != 4)
         or (
-            config == CAPSULE_V6
+            is_capsule_comparison(config)
+            and document.get("schema_version") != capsule_schema_version(config)
+        )
+        or (
+            is_capsule_comparison(config)
             and document.get("execution_profile")
             != context_capsule_module().CAPSULE_EXECUTION_PROFILE
         )
-        or (config == CAPSULE_V6 and document.get("full_corpus") is not True)
+        or (is_capsule_comparison(config) and document.get("full_corpus") is not True)
         or not isinstance(snapshots, dict)
         or set(snapshots) != corpus_ids
         or snapshots != current_snapshots
         or document.get("static") != current_static
         or not results
         or (
-            config == CAPSULE_V6
+            is_capsule_comparison(config)
             and (
                 document.get("telemetry_attestation") != "none"
                 or not isinstance(document.get("environment"), dict)
@@ -2005,7 +2085,7 @@ def report_run_is_credible(
             snapshot = current_snapshots[case.id]
             specification = (
                 artifacts_by_case[case.id][variant]
-                if config == CAPSULE_V6
+                if is_capsule_comparison(config)
                 else artifact_text(case, variant, config)
             )
             expected_provenance = result_provenance(
@@ -2037,7 +2117,7 @@ def report_run_is_credible(
                 for field in ("discovery", "read", "verify")
             )
             or (
-                config == CAPSULE_V6
+                is_capsule_comparison(config)
                 and (
                     not isinstance(pre_edit_categories, dict)
                     or any(
@@ -2093,7 +2173,8 @@ def capsule_report_is_credible(
     """
 
     try:
-        if document_comparison(document) != CAPSULE_V6:
+        config = document_comparison(document)
+        if not is_capsule_comparison(config):
             return False
     except ValueError:
         return False
@@ -2116,7 +2197,7 @@ def capsule_report_is_credible(
         )
         and capsule_route_telemetry_matches_snapshot(document, result)
         and (
-            result.get("variant") != CAPSULE_V6.primary_candidate
+            result.get("variant") != config.primary_candidate
             or capsule_has_exact_tool_sequence(result.get("provider"))
         )
         for result in results
@@ -2480,7 +2561,7 @@ def capsule_pre_edit_telemetry_failures(
 
 def capsule_action_gate_coverage(
     results: list[dict[str, Any]],
-    config: ComparisonConfig = CAPSULE_V6,
+    config: ComparisonConfig = MARKDOWN_CAPSULE_V6,
 ) -> tuple[int, int]:
     """Count candidate runs with both routed-edit telemetry and no gate error."""
 
@@ -2579,15 +2660,18 @@ def capsule_claim_limitations(
     primary_combined: dict[str, Any],
     credible: bool,
     preserved: bool,
-    config: ComparisonConfig = CAPSULE_V6,
+    config: ComparisonConfig = MARKDOWN_CAPSULE_V6,
 ) -> list[str]:
     """Enumerate every failed measured-corpus claim predicate."""
 
     limitations: list[str] = []
+    baseline_label = arm_label(config, config.primary_baseline)
+    candidate_label = arm_label(config, config.primary_candidate)
     successful_pairs, expected_pairs = primary_success_coverage(document, results, config)
     if expected_pairs == 0 or successful_pairs != expected_pairs:
         limitations.append(
-            f"only {successful_pairs}/{expected_pairs} Packet v3/Capsule v6 pairs "
+            f"only {successful_pairs}/{expected_pairs} "
+            f"{baseline_label}/{candidate_label} pairs "
             "were jointly successful"
         )
     if primary_combined["pairs"] != expected_pairs:
@@ -2596,7 +2680,9 @@ def capsule_claim_limitations(
             "joint-success token telemetry"
         )
     if not preserved:
-        limitations.append("Capsule v6 did not preserve task/test success for every fixture")
+        limitations.append(
+            f"{candidate_label} did not preserve task/test success for every fixture"
+        )
 
     provider_errors = provider_error_count(results)
     if provider_errors:
@@ -2674,7 +2760,16 @@ def capsule_claim_limitations(
 
 
 def capsule_v6_report(document: dict[str, Any]) -> str:
-    config = CAPSULE_V6
+    config = document_comparison(document)
+    if not is_capsule_comparison(config):
+        raise ValueError(f"result is not a Capsule v6 comparison: {config.name}")
+    baseline_label = arm_label(config, config.primary_baseline)
+    candidate_label = arm_label(config, config.primary_candidate)
+    candidate_delta_label = (
+        "Capsule delta"
+        if config == CAPSULE_V6
+        else f"{candidate_label} delta"
+    )
     results = document["results"]
     aggregates = {variant: aggregate(results, variant) for variant in config.variants}
     paired = {
@@ -2706,7 +2801,11 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         config,
     )
     lines = [
-        "# Semantic Context Capsule Benchmark",
+        (
+            "# Ordinary Markdown vs Capsule v6 Benchmark"
+            if config == MARKDOWN_CAPSULE_V6
+            else "# Semantic Context Capsule Benchmark"
+        ),
         "",
         f"- Run: `{document['run_id']}`",
         f"- Provider: `{document['provider']}`",
@@ -2714,12 +2813,19 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         f"- Reasoning effort: `{document.get('reasoning_effort') or 'provider default'}`",
         f"- Cases: {len(document['cases'])}",
         f"- Repetitions: {document['repetitions']}",
-        "- Packet version: 3",
+    ]
+    if config == CAPSULE_V6:
+        lines.append("- Packet version: 3")
+    lines.extend([
         "- Capsule version: 6",
         f"- Execution profile: `{document.get('execution_profile', 'unrecorded')}`",
         f"- Telemetry attestation: `{document.get('telemetry_attestation', 'none')}`",
-        "",
-    ]
+    ])
+    if config == MARKDOWN_CAPSULE_V6:
+        lines.append(
+            "- Baseline: ordinary Markdown task description without embedded repository source"
+        )
+    lines.append("")
     if limitations:
         lines.extend([
             "> Non-publishable experimental smoke run. Publishable evidence requires "
@@ -2728,6 +2834,13 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
             "repetitions, and a positive per-fixture token interval.",
             "",
         ])
+    authoring_limit = (
+        "- Capsule v6 embeds a prebuilt execution plan and routed source snapshot; "
+        "this execution comparison excludes Capsule authoring cost and reuse break-even."
+        if config == MARKDOWN_CAPSULE_V6
+        else "- Capsule v6 embeds Packet v3 and its routed source snapshot; "
+        "this comparison excludes authoring cost and reuse break-even."
+    )
     lines.extend([
         "## Quality and usage",
         "",
@@ -2755,11 +2868,13 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         "",
         f"Routed action gate: **{action_passed}/{action_total}** Capsule v6 runs.",
         "",
-        "## Primary comparison: Capsule v6 vs Packet v3",
+        f"## Primary comparison: {candidate_label} vs {baseline_label}",
         "",
-        "Only jointly successful Packet v3/Capsule v6 pairs contribute to paired totals, medians, and confidence intervals.",
+        f"Only jointly successful {baseline_label}/{candidate_label} pairs contribute "
+        "to paired totals, medians, and confidence intervals.",
         "",
-        "| Metric | Packet v3 paired total | Capsule v6 paired total | Capsule delta | Paired median reduction | 95% fixture CI |",
+        f"| Metric | {baseline_label} paired total | {candidate_label} paired total | "
+        f"{candidate_delta_label} | Paired median reduction | 95% fixture CI |",
         "|---|---:|---:|---:|---:|---:|",
     ])
     for label, name in CAPSULE_REPORT_METRICS:
@@ -2782,7 +2897,8 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         "",
         "## All-run deltas",
         "",
-        "| Metric | Packet v3 total | Capsule v6 total | Capsule delta |",
+        f"| Metric | {baseline_label} total | {candidate_label} total | "
+        f"{candidate_delta_label} |",
         "|---|---:|---:|---:|",
     ])
     for label, name in CAPSULE_REPORT_METRICS:
@@ -2831,8 +2947,8 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
     ])
     if not limitations:
         lines.append(
-            "This suite supports a measured token-saving result for Capsule v6 "
-            "versus Packet v3 on this corpus while preserving behavior in every "
+            f"This suite supports a measured token-saving result for {candidate_label} "
+            f"versus {baseline_label} on this corpus while preserving behavior in every "
             "fixture. Provider telemetry remains self-reported; this is not a "
             "universal guarantee."
         )
@@ -2851,7 +2967,7 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         lines.append(
             "Observed full-run result: Capsule v6 used "
             f"**{abs(observed_reduction):.2f}% {observed_direction}** total model "
-            "tokens versus Packet v3. The suite "
+            f"tokens versus {baseline_label}. The suite "
             "cannot establish a publishable token-saving result across every fixture because "
             + "; ".join(limitations)
             + "."
@@ -2865,7 +2981,7 @@ def capsule_v6_report(document: dict[str, Any]) -> str:
         "- Command classification is directional telemetry, not a filesystem-access audit. One Codex event may contain multiple or indirectly scripted operations.",
         "- Pre-edit classification is claim-eligible only when file-change event paths confirm a routed or target edit; missing or pathless events fail closed.",
         "- The reported fixture-cluster interval bootstraps per-fixture median reductions; it is not an interval for the displayed all-run aggregate reduction.",
-        "- Capsule v6 embeds Packet v3 and its routed source snapshot; this comparison excludes authoring cost and reuse break-even.",
+        authoring_limit,
         "- Static Capsule size excludes the host prompt; measured model usage includes the complete rendered prompt.",
         "- Hidden tests and hidden expected outputs stay outside the solution process; visible smoke assertions are restored from immutable fixtures for every arm.",
         "- Results apply only to the recorded model, reasoning effort, repository shapes, and cache behavior.",
@@ -2891,13 +3007,17 @@ def validate_capsule_release(
 
     errors: list[str] = []
     results = document.get("results")
-    if not isinstance(results, list) or not capsule_report_is_credible(
-        document,
-        results,
+    try:
+        config = document_comparison(document)
+    except ValueError:
+        config = None
+    if (
+        config != MARKDOWN_CAPSULE_V6
+        or not isinstance(results, list)
+        or not capsule_report_is_credible(document, results)
     ):
         errors.append("Capsule result does not satisfy current credibility gates")
         return errors
-    config = CAPSULE_V6
     aggregates = {
         variant: aggregate(results, variant) for variant in config.variants
     }

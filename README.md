@@ -116,39 +116,25 @@ paths and required first `file_change`; it deliberately omits `V1` so the tail
 cannot prime an early command. The leading control owns the full
 `file_change -> V1 -> final answer` sequence. Provider prompts use the
 `capsule-v6-next-action-1` profile: no conflicting generic syntax check and no
-competing instruction after the artifact. The
-two-arm harness compares Capsule v6 directly with Packet v3, securely compares
-every routed post-state with the captured starter, and fails no-edit, partial
-edit, split-edit, pre-edit command, substituted verification, or multi-attempt
-outcomes. It
-reports behavior, provider telemetry, and byte-auditable static overhead.
+competing instruction after the artifact. The public two-arm harness compares
+Capsule v6 directly with an ordinary Markdown task description. It securely
+compares every routed post-state with the captured starter and fails no-edit,
+partial edit, split-edit, pre-edit command, substituted verification, or
+multi-attempt outcomes. It reports behavior, provider telemetry, and
+byte-auditable static overhead.
 
-Published `gpt-5.6-terra`, medium-reasoning Capsule v6 run:
+Each paired run starts from the same captured repository. The Markdown arm gets
+the existing `baseline.md` through the generic implementation prompt; it gets no
+embedded source, route, or Capsule action gate. The Capsule arm gets the sealed
+handoff. This measures execution after both documents already exist. It does not
+include one-time Capsule authoring cost, and it never pools measurements from the
+older Packet benchmark.
 
-| Measure | Packet v3 | Capsule v6 | Capsule result |
-|---|---:|---:|---:|
-| Task success | 9/9 | 9/9 | 100% preserved |
-| Acceptance tests | 100% | 100% | All tests passed |
-| Total model tokens | 727,365 | 454,192 | 37.56% fewer |
-| Uncached input tokens | 105,462 | 85,751 | 18.69% fewer |
-| Output tokens | 18,767 | 10,809 | 42.40% fewer |
-| Agent wall time | 434.703s | 278.693s | 35.89% lower |
-| Tool calls | 35 | 18 | 48.57% fewer |
-| Discovery/read commands | 21/20 | 0/0 | Eliminated in this corpus |
-
-All 9/9 Capsule runs passed the exact routed-action gate. The fixture-cluster
-95% confidence interval for total-token reduction was
-`[23.282%, 38.629%]`. Capsule bytes were 222.46% larger at the median, so the
-gain came from eliminating downstream discovery and read turns, not static
-compression. These are measured corpus results, not a universal guarantee. See
-the [rendered Capsule report](CAPSULE_BENCHMARK.md) and
-[privacy-redacted result](benchmarks/results/published/gpt-5.6-terra-medium-20260903-context-capsule-v6/capsule-r3.json).
-
-The result and exact rendered report pass an isolated release credibility
-validator. That gate runs with Python
-`-I` from the launcher's exact `HEAD` Git blob, then attests the live launcher
-and harness blobs. It permits only the root report, two README claim files, and
-one non-executable published directory containing `capsule-r3.json` plus a
+Direct Markdown/Capsule numbers are published only after the result and exact
+rendered report pass an isolated release credibility validator. That gate runs
+with Python `-I` from the launcher's exact `HEAD` Git blob, then attests the live
+launcher and harness blobs. It permits only the root report, two README claim
+files, and one non-executable published directory containing `capsule-r3.json` plus a
 byte-identical `CAPSULE.md` after the clean run commit. Attested validators
 execute from verified Git-blob bytes, not live paths, and the empty code stage
 rejects stdlib import shadows before other Python checks run. Release
@@ -175,7 +161,6 @@ See the [implementation report](BENCHMARK.md),
 [context report](CONTEXT_BENCHMARK.md),
 [lifecycle report](LIFECYCLE_BENCHMARK.md),
 [execution packet report](HANDOFF_BENCHMARK.md),
-[Capsule v6 report](CAPSULE_BENCHMARK.md),
 [historical artifacts — unsanitized, non-secret-only](benchmarks/results/published/gpt-5.6-terra-medium-20260901-generated/),
 [historical Packet artifacts — unsanitized, non-secret-only](benchmarks/results/published/gpt-5.6-terra-medium-20260902-execution-packet/),
 and [methodology and commands](benchmarks/README.md).

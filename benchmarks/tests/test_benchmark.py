@@ -940,7 +940,7 @@ class BenchmarkCliTest(unittest.TestCase):
         prompt = handoff.execution_prompt(
             "opaque",
             "capsule",
-            handoff.CAPSULE_V6,
+            handoff.MARKDOWN_CAPSULE_V6,
         )
 
         self.assertIn(capsule_module.CAPSULE_HOST_CONTROL, prompt)
@@ -967,7 +967,7 @@ class BenchmarkCliTest(unittest.TestCase):
         capsule_prompt = handoff.execution_prompt(
             capsule_text,
             "capsule",
-            handoff.CAPSULE_V6,
+            handoff.MARKDOWN_CAPSULE_V6,
         )
         self.assertGreater(
             capsule_prompt.rfind("@NEXT "),
@@ -986,16 +986,20 @@ class BenchmarkCliTest(unittest.TestCase):
         )
         self.assertNotIn(
             "Capsule execution gate:",
-            handoff.execution_prompt("opaque", "packet", handoff.CAPSULE_V6),
+            handoff.execution_prompt(
+                "opaque",
+                "markdown",
+                handoff.MARKDOWN_CAPSULE_V6,
+            ),
         )
-        packet_prompt = handoff.execution_prompt(
+        markdown_prompt = handoff.execution_prompt(
             "opaque",
-            "packet",
-            handoff.CAPSULE_V6,
+            "markdown",
+            handoff.MARKDOWN_CAPSULE_V6,
         )
-        self.assertEqual(packet_prompt, benchmark_module.benchmark_prompt("opaque"))
+        self.assertEqual(markdown_prompt, benchmark_module.benchmark_prompt("opaque"))
         self.assertEqual(
-            hashlib.sha256(packet_prompt.encode("utf-8")).hexdigest(),
+            hashlib.sha256(markdown_prompt.encode("utf-8")).hexdigest(),
             PACKET_PROMPT_GOLDEN_SHA256,
         )
         with self.assertRaisesRegex(ValueError, "only by an execution gate"):
@@ -1116,8 +1120,13 @@ class BenchmarkCliTest(unittest.TestCase):
         real_verification = handoff.core.run_verification
 
         def no_edit_provider(case, _workspace):
+            capsule = handoff.artifact_text(
+                case,
+                "capsule",
+                handoff.MARKDOWN_CAPSULE_V6,
+            )
             target_paths = handoff.routed_edit_paths(
-                handoff.artifact_text(case, "packet", handoff.CAPSULE_V6)
+                handoff.capsule_packet_text(capsule)
             )
             return {
                 "return_code": 0,
@@ -1196,7 +1205,7 @@ class BenchmarkCliTest(unittest.TestCase):
                 repetitions=1,
                 seed=20260901,
                 case=["refund-ledger"],
-                comparison="capsule-v6",
+                comparison="markdown-capsule-v6",
                 variant=[],
                 timeout_seconds=30,
                 output=output,
@@ -2575,7 +2584,7 @@ class BenchmarkCliTest(unittest.TestCase):
         revision_check.start()
         self.addCleanup(revision_check.stop)
         cases = benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
-        config = handoff.CAPSULE_V6
+        config = handoff.MARKDOWN_CAPSULE_V6
         snapshots = {
             case.id: handoff.case_snapshot(case, config) for case in cases
         }
@@ -2583,8 +2592,9 @@ class BenchmarkCliTest(unittest.TestCase):
         run_order = 0
         for case in cases:
             snapshot = snapshots[case.id]
+            capsule = handoff.artifact_text(case, "capsule", config)
             target_paths = handoff.routed_edit_paths(
-                handoff.artifact_text(case, "packet", config)
+                handoff.capsule_packet_text(capsule)
             )
             target_digest = benchmark_module.telemetry_path_set_sha256(target_paths)
             for repetition in range(1, 4):
@@ -2690,9 +2700,9 @@ class BenchmarkCliTest(unittest.TestCase):
                         "error": None,
                     })
         document = {
-            "schema_version": 4,
-            "kind": "semantic-context-capsule-comparison",
-            "comparison": "capsule-v6",
+            "schema_version": 5,
+            "kind": "markdown-context-capsule-comparison",
+            "comparison": "markdown-capsule-v6",
             "execution_profile": "capsule-v6-next-action-1",
             "packet_version": 3,
             "capsule_version": 6,
@@ -2709,7 +2719,11 @@ class BenchmarkCliTest(unittest.TestCase):
             "code_revision": {"unit_test": True},
             "variants": list(config.variants),
             "fixture_snapshot": snapshots,
-            "static": handoff.capsule_static_rows_from_snapshots(cases, snapshots),
+            "static": handoff.capsule_static_rows_from_snapshots(
+                cases,
+                snapshots,
+                config,
+            ),
             "results": results,
         }
         by_key = {
@@ -2751,7 +2765,7 @@ class BenchmarkCliTest(unittest.TestCase):
             / "benchmarks"
             / "results"
             / "published"
-            / "gpt-5.6-terra-medium-20260902-context-capsule"
+            / "gpt-5.6-terra-medium-20260903-markdown-capsule-v6"
         )
         if not published.is_dir():
             self.skipTest("optional published Capsule evidence is not present")
@@ -2763,6 +2777,12 @@ class BenchmarkCliTest(unittest.TestCase):
 
     def test_mock_capsule_handoff_suite_has_two_arms_and_no_fixture_write(self) -> None:
         handoff = load_module("benchmark_handoff_mock_capsule", HANDOFF)
+        self.assertEqual(handoff.CAPSULE_V6.name, "capsule-v6")
+        self.assertEqual(handoff.CAPSULE_V6.variants, ("packet", "capsule"))
+        self.assertEqual(
+            handoff.MARKDOWN_CAPSULE_V6.variants,
+            ("markdown", "capsule"),
+        )
         before = {
             case.id: benchmark_module.tree_sha256(case.path)
             for case in benchmark_module.discover_cases(cases_dir=HANDOFF_CASES)
@@ -2778,7 +2798,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     "--provider",
                     "mock",
                     "--comparison",
-                    "capsule-v6",
+                    "markdown-capsule-v6",
                     "--output",
                     str(result_path),
                 ],
@@ -2790,16 +2810,28 @@ class BenchmarkCliTest(unittest.TestCase):
             )
             self.assertEqual(run.returncode, 0, run.stderr)
             document = json.loads(result_path.read_text(encoding="utf-8"))
-            self.assertEqual(document["kind"], "semantic-context-capsule-comparison")
-            self.assertEqual(document["comparison"], "capsule-v6")
-            self.assertEqual(document["schema_version"], 4)
+            self.assertEqual(document["kind"], "markdown-context-capsule-comparison")
+            self.assertEqual(document["comparison"], "markdown-capsule-v6")
+            self.assertEqual(document["schema_version"], 5)
             self.assertEqual(
                 document["execution_profile"],
                 "capsule-v6-next-action-1",
             )
             self.assertEqual(document["capsule_version"], 6)
-            self.assertEqual(document["variants"], ["packet", "capsule"])
+            self.assertEqual(document["variants"], ["markdown", "capsule"])
             self.assertEqual(len(document["results"]), 6)
+            for case_id in document["cases"]:
+                artifacts = handoff.capsule_snapshot_artifacts(
+                    document["fixture_snapshot"][case_id],
+                    handoff.MARKDOWN_CAPSULE_V6,
+                )
+                self.assertEqual(set(artifacts), {"markdown", "capsule"})
+                self.assertEqual(
+                    handoff.capsule_packet_text(artifacts["capsule"]),
+                    (HANDOFF_CASES / case_id / "packet.spec.ctx").read_text(
+                        encoding="utf-8"
+                    ),
+                )
             serialized = json.dumps(document)
             self.assertNotIn('"command":', serialized)
             self.assertNotIn('"final_message":', serialized)
@@ -2813,16 +2845,22 @@ class BenchmarkCliTest(unittest.TestCase):
                 {
                     (case, 1, variant)
                     for case in document["cases"]
-                    for variant in ("packet", "capsule")
+                    for variant in ("markdown", "capsule")
                 },
             )
             self.assertTrue(
                 all(
-                    set(row["variants"]) == {"packet", "capsule"}
+                    set(row["variants"]) == {"markdown", "capsule"}
                     for row in document["static"]
                 )
             )
             report = handoff.report(document)
+            self.assertIn(
+                "# Ordinary Markdown vs Capsule v6 Benchmark",
+                report,
+            )
+            self.assertIn("Ordinary Markdown", report)
+            self.assertNotIn("Packet", report)
             self.assertIn("Non-publishable experimental smoke run", report)
             self.assertIn("fewer than three repetitions", report)
 
@@ -2832,7 +2870,7 @@ class BenchmarkCliTest(unittest.TestCase):
                     str(HANDOFF),
                     "static",
                     "--comparison",
-                    "capsule-v6",
+                    "markdown-capsule-v6",
                     "--json",
                 ],
                 cwd=ROOT,
@@ -2844,7 +2882,7 @@ class BenchmarkCliTest(unittest.TestCase):
             self.assertEqual(static.returncode, 0, static.stderr)
             self.assertTrue(
                 all(
-                    set(row["variants"]) == {"packet", "capsule"}
+                    set(row["variants"]) == {"markdown", "capsule"}
                     for row in json.loads(static.stdout)
                 )
             )
@@ -2885,6 +2923,16 @@ class BenchmarkCliTest(unittest.TestCase):
             handoff.report_run_is_credible(
                 forged_artifact,
                 forged_artifact["results"],
+            )
+        )
+        forged_markdown = json.loads(json.dumps(document))
+        forged_markdown["fixture_snapshot"][case_id]["artifacts"]["markdown"] = (
+            benchmark_module.attest_text("forged Markdown bytes\n")
+        )
+        self.assertFalse(
+            handoff.report_run_is_credible(
+                forged_markdown,
+                forged_markdown["results"],
             )
         )
         forged_source_frame = json.loads(json.dumps(document))
@@ -3038,7 +3086,7 @@ class BenchmarkCliTest(unittest.TestCase):
         failed = next(
             result
             for result in incomplete["results"]
-            if result["variant"] == "packet" and result["repetition"] == 1
+            if result["variant"] == "markdown" and result["repetition"] == 1
         )
         failed["grade"] = handoff.core.redact_grade({
             "passed": 0,
@@ -3051,7 +3099,7 @@ class BenchmarkCliTest(unittest.TestCase):
         incomplete_report = handoff.report(incomplete)
         self.assertIn("cannot establish a publishable token-saving result", incomplete_report)
         self.assertIn(
-            "only 8/9 Packet v3/Capsule v6 pairs were jointly successful",
+            "only 8/9 Ordinary Markdown/Capsule v6 pairs were jointly successful",
             incomplete_report,
         )
 
@@ -3065,7 +3113,7 @@ class BenchmarkCliTest(unittest.TestCase):
             candidate_cached: int,
         ) -> dict[str, dict[str, int]]:
             return {
-                "packet": {
+                "markdown": {
                     "total_input_tokens": baseline_uncached + baseline_cached,
                     "total_uncached_input_tokens": baseline_uncached,
                 },
@@ -3077,25 +3125,25 @@ class BenchmarkCliTest(unittest.TestCase):
 
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 90), handoff.CAPSULE_V6
+                aggregates(100, 100, 90, 90), handoff.MARKDOWN_CAPSULE_V6
             ),
             (0.0, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 80), handoff.CAPSULE_V6
+                aggregates(100, 100, 110, 80), handoff.MARKDOWN_CAPSULE_V6
             ),
             (0.5, 1.0),
         )
         self.assertEqual(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 90, 120), handoff.CAPSULE_V6
+                aggregates(100, 100, 90, 120), handoff.MARKDOWN_CAPSULE_V6
             ),
             (0.0, 0.5),
         )
         self.assertIsNone(
             handoff.input_cache_price_advantage_range(
-                aggregates(100, 100, 110, 110), handoff.CAPSULE_V6
+                aggregates(100, 100, 110, 110), handoff.MARKDOWN_CAPSULE_V6
             )
         )
 

@@ -216,30 +216,15 @@ Published `gpt-5.6-terra`, medium-reasoning Packet v3 run:
 See the [rendered report](../HANDOFF_BENCHMARK.md) and
 [historical raw result — unsanitized, non-secret-only](results/published/gpt-5.6-terra-medium-20260902-execution-packet/handoff-r3.json).
 
-Published `gpt-5.6-terra`, medium-reasoning Capsule v6 run:
-
-- 18/18 complete, unique arm runs with no provider or verification failures;
-- Packet v3 and Capsule v6 both passed 9/9 tasks and 100% of tests;
-- all 9/9 Capsule runs passed the exact routed-action gate;
-- Capsule v6 used 37.56% fewer total model tokens, 18.69% fewer uncached-input
-  tokens, 42.40% fewer output tokens, and 48.57% fewer tool calls;
-- the total-token fixture-cluster 95% confidence interval was
-  `[23.282%, 38.629%]`;
-- median static Capsule overhead was 222.46%, so the measured gain came from
-  removing downstream discovery/read turns rather than a smaller artifact.
-
-See the [rendered Capsule report](../CAPSULE_BENCHMARK.md) and
-[privacy-redacted result](results/published/gpt-5.6-terra-medium-20260903-context-capsule-v6/capsule-r3.json).
-
-Run the two-arm Packet v3 versus Capsule v6 benchmark independently:
+Run the public two-arm ordinary Markdown versus Capsule v6 benchmark independently:
 
 ```bash
-python3 -B benchmarks/handoff.py static --comparison capsule-v6
+python3 -B benchmarks/handoff.py static --comparison markdown-capsule-v6
 
-CAPSULE_RUN_NAME=your-model-medium-yyyymmdd-context-capsule
+CAPSULE_RUN_NAME=your-model-medium-yyyymmdd-markdown-capsule-v6
 
 python3 -B benchmarks/handoff.py run \
-  --comparison capsule-v6 \
+  --comparison markdown-capsule-v6 \
   --provider codex \
   --model YOUR_MODEL \
   --reasoning-effort medium \
@@ -256,10 +241,20 @@ python3 -B benchmarks/handoff.py report \
   --output "benchmarks/results/published/${CAPSULE_RUN_NAME}/CAPSULE.md"
 ```
 
+Both arms use the same captured fixture, clean starter repository, hidden
+grader, model, reasoning effort, timeout, and counterbalanced run order. The
+ordinary Markdown arm receives the exact existing `baseline.md` through the
+generic implementation prompt, without embedded source or Capsule controls.
+The Capsule arm receives its sealed routed source and action protocol. This is
+an end-to-end execution-handoff comparison after both artifacts exist, not a
+serialization-only compression claim. Capsule authoring cost and reuse
+break-even remain outside this run, and historical Packet measurements are
+never pooled into it.
+
 The Capsule report distinguishes total discovery/read events from classified
 pre-edit events, measures combined input plus output tokens, and reports an
 input-only cache-price break-even without hardcoding provider prices. Current
-Schema-v4 evidence records the exact `capsule-v6-next-action-1` execution profile.
+Schema-v5 evidence records the exact `capsule-v6-next-action-1` execution profile.
 A Capsule
 run is claim-eligible only when one file-change operation contains every routed
 edit, the exact declared verification runs alone exactly once, no other tool

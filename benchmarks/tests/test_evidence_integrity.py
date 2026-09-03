@@ -344,7 +344,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
         )
         revision_check.start()
         self.addCleanup(revision_check.stop)
-        config = handoff.CAPSULE_V6
+        config = handoff.MARKDOWN_CAPSULE_V6
         cases = core.discover_cases(cases_dir=HANDOFF_CASES)
         args = Namespace(
             provider="codex",
@@ -376,8 +376,9 @@ class EvidenceIntegrityTest(unittest.TestCase):
         ):
             specification = artifacts[(case.id, variant)]
             snapshot = document["fixture_snapshot"][case.id]
+            capsule = artifacts[(case.id, "capsule")]
             target_paths = handoff.routed_edit_paths(
-                artifacts[(case.id, "packet")]
+                handoff.capsule_packet_text(capsule)
             )
             target_digest = core.telemetry_path_set_sha256(target_paths)
             is_capsule = variant == config.primary_candidate
@@ -614,6 +615,15 @@ class EvidenceIntegrityTest(unittest.TestCase):
         self.assertIn(
             "Capsule report is not the exact rendering of its result",
             handoff.validate_capsule_release(document, rendered + b"tampered\n"),
+        )
+        legacy_family = copy.deepcopy(document)
+        legacy_family["comparison"] = "capsule-v6"
+        legacy_family["kind"] = "semantic-context-capsule-comparison"
+        legacy_family["schema_version"] = 4
+        legacy_family["variants"] = ["packet", "capsule"]
+        self.assertIn(
+            "Capsule result does not satisfy current credibility gates",
+            handoff.validate_capsule_release(legacy_family, rendered),
         )
         forged_tokens = copy.deepcopy(document)
         for metrics in forged_tokens["static"][0]["variants"].values():
@@ -892,10 +902,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 handoff.paired_job_schedule(
                     handoff_cases,
                     3,
-                    list(handoff.CAPSULE_V6.variants),
+                    list(handoff.MARKDOWN_CAPSULE_V6.variants),
                     20260901,
                 ),
-                handoff.CAPSULE_V6.variants,
+                handoff.MARKDOWN_CAPSULE_V6.variants,
             ),
             (
                 handoff.paired_job_schedule(
@@ -1086,7 +1096,7 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 repetitions=1,
                 seed=20260901,
                 case=["tenant-settings"],
-                comparison="capsule-v6",
+                comparison="markdown-capsule-v6",
                 variant=[],
                 timeout_seconds=30,
                 output=output,
@@ -1199,8 +1209,8 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 document = handoff.create_document(
                     args,
                     [case],
-                    list(handoff.CAPSULE_V6.variants),
-                    handoff.CAPSULE_V6,
+                    list(handoff.MARKDOWN_CAPSULE_V6.variants),
+                    handoff.MARKDOWN_CAPSULE_V6,
                 )
 
             artifacts = handoff.capsule_snapshot_artifacts(
@@ -1296,7 +1306,10 @@ class EvidenceIntegrityTest(unittest.TestCase):
                 ["tenant-settings"],
                 cases_dir=cases_dir,
             )[0]
-            snapshot = handoff.case_snapshot(case, handoff.CAPSULE_V6)
+            snapshot = handoff.case_snapshot(
+                case,
+                handoff.MARKDOWN_CAPSULE_V6,
+            )
             artifacts = handoff.capsule_snapshot_artifacts(snapshot)
             module = handoff.context_capsule_module()
             frame_hashes = handoff._capsule_source_hashes(
